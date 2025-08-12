@@ -125,8 +125,7 @@ def render_financial_analysis_tab():
             default=["2024"], 
             help="분기별 데이터를 수집할 연도를 선택하세요"
         )
-        st.info("📋 수집할 보고서: 1분기보고서(Q1, 누적) • 반기보고서(Q2, 누적) • 3분기보고서(Q3, 누적) • 사업보고서(연간, 누적)\n"
-        "🔎 Q4(4분기 당기)는 연간 − (Q1+Q2+Q3)로 산출됩니다.")
+        st.info("📋 수집할 보고서: 1분기보고서 (Q1) • 반기보고서 (Q2) • 3분기보고서 (Q3) • 사업보고서 (Q4)")
 
     if st.button("🚀 DART 자동분석 시작", type="primary"):
         with st.spinner("모든 데이터를 수집하고 심층 분석 중입니다..."):
@@ -134,39 +133,82 @@ def render_financial_analysis_tab():
                 dart = DartAPICollector(config.DART_API_KEY)
                 processor = SKFinancialDataProcessor()
                 
-                # 재무 데이터 수집
+                # 재무 데이터 수집 (개선된 버전)
                 dataframes = []
-                for company in selected_companies:
-                    df = processor.process_dart_data(dart.get_company_financials_auto(company, analysis_year), company)
-                    if df is not None:
-                        dataframes.append(df)
+                successful_companies = []
+                failed_companies = []
                 
-                dataframes = [df for df in dataframes if df is not None]
+                st.info(f"🔍 {len(selected_companies)}개 회사의 재무 데이터 수집 시작...")
+                
+                for i, company in enumerate(selected_companies, 1):
+                    with st.status(f"📊 {company} 데이터 수집 중... ({i}/{len(selected_companies)})"):
+                        try:
+                            # DART API 호출
+                            raw_data = dart.get_company_financials_auto(company, analysis_year)
+                            
+                            if raw_data is None or raw_data.empty:
+                                st.warning(f"⚠️ {company}: DART에서 데이터를 찾을 수 없습니다.")
+                                failed_companies.append(company)
+                                continue
+                            
+                            # 데이터 처리
+                            df = processor.process_dart_data(raw_data, company)
+                            
+                            if df is not None and not df.empty:
+                                dataframes.append(df)
+                                successful_companies.append(company)
+                                st.success(f"✅ {company}: {len(df)}개 재무지표 수집 완료")
+                            else:
+                                st.error(f"❌ {company}: 데이터 처리 실패")
+                                failed_companies.append(company)
+                                
+                        except Exception as e:
+                            st.error(f"❌ {company}: 오류 발생 - {str(e)}")
+                            failed_companies.append(company)
+                
+                # 수집 결과 요약
+                if successful_companies:
+                    st.success(f"✅ 재무 데이터 수집 완료: {len(successful_companies)}개 회사 성공")
+                    if failed_companies:
+                        st.warning(f"⚠️ 실패한 회사: {', '.join(failed_companies)}")
+                else:
+                    st.error("❌ 모든 회사의 데이터 수집에 실패했습니다.")
+                    return
 
-                # 분기별 데이터 수집
+                # 분기별 데이터 수집 (개선된 버전)
                 q_data_list = []
                 if collect_quarterly and quarterly_years:
                     q_collector = QuarterlyDataCollector(dart)
-
-                    # (디버그) 실제 로드된 클래스/매핑 확인
+                    
+                    # 디버그 정보 표시
                     st.caption(f"🧭 QuarterlyDataCollector 모듈 = {q_collector.__class__.__module__}")
                     st.caption(f"🧪 보고서코드 매핑 = {getattr(q_collector, 'report_codes', {})}")
-
-                    st.info(f"📊 분기별 데이터 수집 시작... ({', '.join(quarterly_years)}년, {len(selected_companies)}개 회사)")
+                    
+                    st.info(f"📊 분기별 데이터 수집 시작... ({', '.join(quarterly_years)}년, {len(successful_companies)}개 회사)")
                     
                     total_quarters = 0
-                    for year in quarterly_years:
-                        for company in selected_companies:
-                            q_df = q_collector.collect_quarterly_data(company, int(year))
-                            if not q_df.empty:
-                                q_data_list.append(q_df)
-                                total_quarters += len(q_df)
+                    quarterly_success = 0
                     
-                    # 최종 결과만 간단하게 표시
+                    for year in quarterly_years:
+                        for company in successful_companies:
+                            with st.status(f"📈 {company} {year}년 분기별 데이터 수집 중..."):
+                                try:
+                                    q_df = q_collector.collect_quarterly_data(company, int(year))
+                                    if not q_df.empty:
+                                        q_data_list.append(q_df)
+                                        total_quarters += len(q_df)
+                                        quarterly_success += 1
+                                        st.success(f"✅ {company} {year}년: {len(q_df)}개 분기 데이터")
+                                    else:
+                                        st.warning(f"⚠️ {company} {year}년: 분기 데이터 없음")
+                                except Exception as e:
+                                    st.error(f"❌ {company} {year}년: {str(e)}")
+                    
+                    # 분기별 데이터 수집 결과
                     if q_data_list:
-                        st.success(f"✅ 분기별 데이터 수집 완료 ({len(q_data_list)}개 회사, {total_quarters}개 분기)")
+                        st.success(f"✅ 분기별 데이터 수집 완료! 총 {quarterly_success}개 회사, {total_quarters}개 분기 데이터")
                     else:
-                        st.warning("⚠️ 수집된 분기별 데이터가 없습니다.")    
+                        st.warning("⚠️ 수집된 분기별 데이터가 없습니다.")
 
                 if dataframes:
                     # 데이터 저장
@@ -175,6 +217,8 @@ def render_financial_analysis_tab():
                     
                     if q_data_list:
                         quarterly_data = pd.concat(q_data_list, ignore_index=True)
+                        # 분기별 데이터 정렬
+                        quarterly_data = sort_quarterly_by_quarter(quarterly_data)
                         SessionManager.save_data('quarterly_data', quarterly_data)
                         st.success(f"✅ 총 {len(q_data_list)}개 회사의 분기별 데이터 수집 완료")
                     
@@ -189,6 +233,7 @@ def render_financial_analysis_tab():
                     
             except Exception as e:
                 st.error(f"분석 중 오류가 발생했습니다: {str(e)}")
+                st.info("💡 DART API 키가 올바른지 확인해주세요.")
 
     # 분석 결과 표시 (데이터가 있을 때만)
     if SessionManager.is_data_available('financial_data'):
@@ -229,24 +274,47 @@ def render_financial_results():
     # 분기별 트렌드 차트 추가
     if SessionManager.is_data_available('quarterly_data'):
         st.markdown("---")
-        st.subheader("📈 분기별 트렌드 차트")
+        st.subheader("📈 분기별 성과 및 추이 분석")
+        
+        # 분기별 데이터 요약 정보 표시
+        quarterly_df = st.session_state.quarterly_data
+        st.info(f"📊 수집된 분기별 데이터: {len(quarterly_df)}개 데이터포인트")
+        
+        # 분기별 데이터 요약 통계
+        if '보고서구분' in quarterly_df.columns:
+            report_summary = quarterly_df['보고서구분'].value_counts()
+            st.markdown("**📋 수집된 보고서별 데이터 현황**")
+            for report_type, count in report_summary.items():
+                st.write(f"• {report_type}: {count}개")
+        
+        # 분기별 데이터 테이블 표시
+        st.markdown("**📋 분기별 재무지표 상세 데이터**")
+        # '연간' 행 제거
+        quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
+        st.dataframe(quarterly_df, use_container_width=True)
         
         if PLOTLY_AVAILABLE:
+            # ✅ 분기가 '연간'이 아닌 행만 차트에 사용
+            chart_input = quarterly_df.copy()
+            if '분기' in chart_input.columns:
+               chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
+
             st.markdown("**📊 분기별 재무지표 트렌드**")
-            st.plotly_chart(create_quarterly_trend_chart(st.session_state.quarterly_data), use_container_width=True, key="quarterly_trend")
+            st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="quarterly_trend")
             
-            st.markdown("**📈 갭 트렌드 분석**")
-            st.plotly_chart(create_gap_trend_chart(st.session_state.quarterly_data), use_container_width=True, key="gap_trend")
+            st.markdown("**📈 트렌드 분석**")
+            st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="gap_trend")
         else:
             st.info("📊 분기별 차트 모듈이 없습니다.")
 
-    # 갭차이 분석
+    # 갭차이 분석 (완전한 버전)
     st.markdown("---")
-    st.subheader("📈 SK에너지 대비 경쟁사 차이 분석")
+    st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
+    raw_cols = [col for col in final_df.columns if col.endswith('_원시값')]
     if raw_cols and len(raw_cols) > 1:
         gap_analysis = create_gap_analysis(final_df, raw_cols)
         if not gap_analysis.empty:
-            st.markdown("**📊 SK에너지 대비 경쟁사 차이 분석표**")
+            st.markdown("**📊 SK에너지 대비 경쟁사 비교 분석표**")
             st.dataframe(
                 gap_analysis, 
                 use_container_width=True,
@@ -258,12 +326,12 @@ def render_financial_results():
             
             # 갭차이 시각화
             if PLOTLY_AVAILABLE:
-                st.markdown("**📈 격차 분석 시각화 차트**")
+                st.markdown("**📈 차이 시각화 차트**")
                 st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="gap_chart")
         else:
-            st.warning("⚠️ 차이 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
+            st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
     else:
-        st.info("ℹ️ 차이 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
+        st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
 
     # AI 인사이트 표시
     if SessionManager.is_data_available('financial_insight'):
