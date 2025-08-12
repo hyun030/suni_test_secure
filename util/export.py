@@ -271,3 +271,8 @@ if __name__ == "__main__":
         print("✅ main_test.pdf 생성됨")
     
     print("테스트 완료 - 파일들을 직접 열어보세요!")
+
+# 파일 끝에 추가 (streamlit 오류로 잠시 추가해 둔 것 나중에 오류 잡고 이거 빼야 합니다!)
+def create_enhanced_pdf_report(*args, **kwargs):
+    """create_enhanced_pdf_report_final의 별칭"""
+    return create_enhanced_pdf_report_final(*args, **kwargs)
