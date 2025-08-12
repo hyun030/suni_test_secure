@@ -354,7 +354,7 @@ def create_gap_chart(gap_analysis_df: pd.DataFrame):
         chart_df, x='지표', y='갭(퍼센트포인트)', color='회사',
         text='갭(퍼센트포인트)', color_discrete_map=color_map,
         barmode='group', height=500,
-        title=""
+        title="📈 SK에너지 기준 상대 격차 분석"
     )
     fig.update_traces(texttemplate='%{text:.1f}pp', textposition='outside', cliponaxis=False)
     fig.add_hline(y=0, line_dash='dash', line_color='red',
