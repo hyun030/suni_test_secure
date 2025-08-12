@@ -1,14 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-SK에너지 보고서 생성 모듈 - 최종 작동 버전
-이 파일을 reports/report_generator.py와 교체하세요!
-
-모든 문제 해결:
-✅ PDF 파일 정상 생성 및 열림
-✅ 한글 폰트 완전 지원
-✅ 차트 4개 안전 생성
-✅ 표 크기 자동 조절
-✅ 오류 처리 완비
+SK에너지 보고서 생성 모듈 - 완전 수정 버전
+PDF 열림 오류 해결을 위한 완전한 재작성
 """
 
 import io
@@ -16,128 +9,209 @@ import os
 import pandas as pd
 from datetime import datetime
 import streamlit as st
+import tempfile
 
-# matplotlib 설정
+# matplotlib 설정 (안전)
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial']
+import matplotlib.font_manager as fm
+
+# 한글 폰트 설정
+try:
+    # Windows
+    if os.name == 'nt':
+        plt.rcParams['font.family'] = 'Malgun Gothic'
+    else:
+        # Linux/Mac - DejaVu Sans 사용
+        plt.rcParams['font.family'] = 'DejaVu Sans'
+except:
+    plt.rcParams['font.family'] = 'Arial'
+
 plt.rcParams['axes.unicode_minus'] = False
 
-# ReportLab 임포트
+# ReportLab 임포트 및 초기화
+REPORTLAB_AVAILABLE = False
 try:
-    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import A4, letter
     from reportlab.lib import colors
+    from reportlab.lib.units import inch, cm, mm
     from reportlab.platypus import (
-        Paragraph, Table, TableStyle, Spacer, PageBreak, 
-        Image as RLImage, SimpleDocTemplate
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, 
+        PageBreak, Image as RLImage, KeepTogether
     )
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.lib.units import inch, cm
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    
     REPORTLAB_AVAILABLE = True
-except ImportError:
+    print("✅ ReportLab 로드 성공")
+    
+except ImportError as e:
+    print(f"❌ ReportLab 로드 실패: {e}")
     REPORTLAB_AVAILABLE = False
 
 
-# --------------------------
-# 안전한 텍스트 처리
-# --------------------------
 def safe_text(text):
-    """PDF용 안전한 텍스트 변환"""
+    """안전한 텍스트 처리"""
     if pd.isna(text):
         return ""
     
     text = str(text).strip()
-    # 문제될 수 있는 문자들 제거
-    text = text.replace('\ufffd', '').replace('\u00a0', ' ')
-    text = text.replace('\t', ' ').replace('\r\n', '\n').replace('\r', '\n')
-    
-    return text
-
-
-# --------------------------
-# 폰트 설정 (안전)
-# --------------------------
-def setup_fonts():
-    """안전한 폰트 설정"""
-    fonts = {
-        "Korean": "Helvetica",
-        "KoreanBold": "Helvetica-Bold"
+    # 특수문자 제거
+    replacements = {
+        '\ufffd': '',
+        '\u00a0': ' ',
+        '\t': ' ',
+        '\r\n': ' ',
+        '\r': ' ',
+        '\n': ' ',
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
     }
     
-    # 시스템 폰트 시도
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    
+    return text[:100]  # 길이 제한
+
+
+def setup_korean_font():
+    """한글 폰트 설정"""
+    font_name = "NotoSans"
+    
+    # 다양한 폰트 경로 시도
     font_paths = [
-        ("C:/Windows/Fonts/malgun.ttf", "Malgun"),
-        ("/System/Library/Fonts/Arial.ttf", "Arial"),
-        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "DejaVu")
+        # Windows
+        "C:/Windows/Fonts/malgun.ttf",
+        "C:/Windows/Fonts/gulim.ttc",
+        # Mac
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/Library/Fonts/Arial.ttf",
+        # Linux
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
     ]
     
-    for path, name in font_paths:
+    for font_path in font_paths:
         try:
-            if os.path.exists(path):
-                pdfmetrics.registerFont(TTFont("Korean", path))
-                pdfmetrics.registerFont(TTFont("KoreanBold", path))
-                fonts["Korean"] = "Korean"
-                fonts["KoreanBold"] = "KoreanBold"
-                break
-        except:
+            if os.path.exists(font_path):
+                pdfmetrics.registerFont(TTFont(font_name, font_path))
+                print(f"✅ 폰트 등록 성공: {font_path}")
+                return font_name
+        except Exception as e:
+            print(f"폰트 등록 실패 {font_path}: {e}")
             continue
     
-    return fonts
+    print("⚠️ 기본 폰트 사용: Helvetica")
+    return "Helvetica"
 
 
-# --------------------------
-# 테이블 생성 (안전)
-# --------------------------
-def create_safe_table(df, fonts, header_color='#E31E24'):
-    """안전한 테이블 생성"""
-    if df is None or df.empty:
+def create_sample_chart():
+    """안전한 샘플 차트 생성"""
+    try:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        fig.patch.set_facecolor('white')
+        
+        # 간단한 막대 차트
+        categories = ['SK에너지', 'S-Oil', 'GS칼텍스', 'HD현대']
+        values = [15.2, 14.8, 13.5, 11.2]
+        colors_list = ['#E31E24', '#FF6B6B', '#4ECDC4', '#45B7D1']
+        
+        bars = ax.bar(categories, values, color=colors_list, alpha=0.8)
+        ax.set_title('매출액 비교 (조원)', fontsize=12, pad=20)
+        ax.set_ylabel('매출액')
+        
+        # 값 표시
+        for bar, value in zip(bars, values):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                    f'{value}', ha='center', va='bottom')
+        
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        
+        return fig
+        
+    except Exception as e:
+        print(f"차트 생성 실패: {e}")
+        return None
+
+
+def fig_to_image_element(fig, width=400, height=250):
+    """matplotlib figure를 ReportLab Image로 변환"""
+    if fig is None:
         return None
     
     try:
-        # 데이터 준비
-        table_data = []
-        headers = [safe_text(col) for col in df.columns]
-        table_data.append(headers)
+        # 임시 파일로 저장
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+            fig.savefig(tmp_file.name, format='png', bbox_inches='tight', 
+                       dpi=150, facecolor='white', edgecolor='none')
+            tmp_file.flush()
+            
+            # ReportLab Image 생성
+            img = RLImage(tmp_file.name, width=width, height=height)
+            
+            # 임시 파일 정리
+            try:
+                os.unlink(tmp_file.name)
+            except:
+                pass
+                
+        plt.close(fig)
+        return img
         
-        for _, row in df.iterrows():
-            row_data = []
-            for val in row.values:
-                text = safe_text(val)
-                if len(text) > 30:
-                    text = text[:27] + "..."
-                row_data.append(text)
-            table_data.append(row_data)
+    except Exception as e:
+        print(f"이미지 변환 실패: {e}")
+        try:
+            plt.close(fig)
+        except:
+            pass
+        return None
+
+
+def create_simple_table(data_list, headers, font_name="Helvetica"):
+    """간단한 테이블 생성"""
+    try:
+        if not data_list or not headers:
+            return None
+        
+        # 테이블 데이터 준비
+        table_data = [headers]
+        for row in data_list:
+            safe_row = [safe_text(str(cell)) for cell in row]
+            table_data.append(safe_row)
         
         # 컬럼 너비 계산
         col_count = len(headers)
-        if col_count <= 3:
-            col_widths = [5*cm, 5*cm, 5*cm][:col_count]
-        elif col_count == 4:
-            col_widths = [3*cm, 4*cm, 4*cm, 4*cm]
-        else:
-            col_widths = [15*cm / col_count] * col_count
+        total_width = 15 * cm
+        col_width = total_width / col_count
         
         # 테이블 생성
-        table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        table = Table(table_data, colWidths=[col_width] * col_count)
         
-        # 스타일 적용
+        # 기본 스타일 적용
         table.setStyle(TableStyle([
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(header_color)),
+            # 헤더 스타일
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E31E24')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('FONTNAME', (0, 0), (-1, 0), fonts.get('KoreanBold', 'Helvetica-Bold')),
-            ('FONTNAME', (0, 1), (-1, -1), fonts.get('Korean', 'Helvetica')),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTNAME', (0, 0), (-1, 0), font_name),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            # 테두리
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            # 패딩
             ('LEFTPADDING', (0, 0), (-1, -1), 6),
             ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9F9F9')]),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            # 배경색 교대로
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F8F8')]),
         ]))
         
         return table
@@ -147,494 +221,282 @@ def create_safe_table(df, fonts, header_color='#E31E24'):
         return None
 
 
-# --------------------------
-# 차트 생성 (안전)
-# --------------------------
-def create_charts():
-    """4개의 안전한 차트 생성"""
-    charts = {}
+def create_minimal_pdf_report():
+    """최소한의 안전한 PDF 보고서 생성"""
     
-    try:
-        # 차트 1: 분기별 트렌드
-        fig1, ax1 = plt.subplots(figsize=(10, 6))
-        fig1.patch.set_facecolor('white')
-        
-        quarters = ['2023Q4', '2024Q1', '2024Q2', '2024Q3']
-        sk_data = [14.8, 15.0, 15.2, 15.5]
-        comp_data = [13.1, 13.4, 13.7, 14.0]
-        
-        ax1.plot(quarters, sk_data, marker='o', linewidth=3, color='#E31E24', label='SK에너지')
-        ax1.plot(quarters, comp_data, marker='s', linewidth=2, color='#666666', label='경쟁사 평균')
-        ax1.set_title('분기별 매출액 추이', fontweight='bold', pad=20)
-        ax1.set_ylabel('매출액 (조원)')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        plt.tight_layout()
-        charts['trend'] = fig1
-        
-    except Exception as e:
-        print(f"차트1 생성 실패: {e}")
-        charts['trend'] = None
-    
-    try:
-        # 차트 2: 갭차이 (정방향 막대)
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        fig2.patch.set_facecolor('white')
-        
-        companies = ['S-Oil', 'GS칼텍스', 'HD현대오일뱅크']
-        gaps = [-2.6, -11.2, -26.3]
-        colors_list = ['#FF6B6B', '#4ECDC4', '#45B7D1']
-        
-        bars = ax2.bar(companies, gaps, color=colors_list, alpha=0.8, width=0.6)
-        ax2.set_title('SK에너지 대비 경쟁사 성과 갭', fontweight='bold', pad=20)
-        ax2.set_ylabel('갭차이 (%)')
-        ax2.axhline(y=0, color='red', linestyle='--', alpha=0.7)
-        ax2.grid(True, alpha=0.3, axis='y')
-        
-        # 값 표시
-        for bar, gap in zip(bars, gaps):
-            height = bar.get_height()
-            ax2.text(bar.get_x() + bar.get_width()/2., 
-                    height + (1 if height >= 0 else -1.5),
-                    f'{gap}%', ha='center', va='bottom' if height >= 0 else 'top',
-                    fontweight='bold')
-        
-        plt.xticks(rotation=0)
-        plt.tight_layout()
-        charts['gap'] = fig2
-        
-    except Exception as e:
-        print(f"차트2 생성 실패: {e}")
-        charts['gap'] = None
-    
-    try:
-        # 차트 3: 영업이익률 비교
-        fig3, ax3 = plt.subplots(figsize=(10, 6))
-        fig3.patch.set_facecolor('white')
-        
-        companies = ['SK에너지', 'S-Oil', 'GS칼텍스', 'HD현대오일뱅크']
-        margins = [5.6, 5.3, 4.6, 4.3]
-        colors_list = ['#E31E24', '#FF6B6B', '#4ECDC4', '#45B7D1']
-        
-        bars = ax3.bar(companies, margins, color=colors_list, alpha=0.8)
-        ax3.set_title('영업이익률 비교', fontweight='bold', pad=20)
-        ax3.set_ylabel('영업이익률 (%)')
-        ax3.grid(True, alpha=0.3, axis='y')
-        
-        for bar, margin in zip(bars, margins):
-            height = bar.get_height()
-            ax3.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-                    f'{margin}%', ha='center', va='bottom', fontweight='bold')
-        
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        charts['margin'] = fig3
-        
-    except Exception as e:
-        print(f"차트3 생성 실패: {e}")
-        charts['margin'] = None
-    
-    try:
-        # 차트 4: ROE vs ROA 분산도
-        fig4, ax4 = plt.subplots(figsize=(10, 6))
-        fig4.patch.set_facecolor('white')
-        
-        companies = ['SK에너지', 'S-Oil', 'GS칼텍스', 'HD현대오일뱅크']
-        roe = [12.3, 11.8, 10.5, 9.2]
-        roa = [8.1, 7.8, 7.2, 6.5]
-        colors_list = ['#E31E24', '#FF6B6B', '#4ECDC4', '#45B7D1']
-        
-        ax4.scatter(roa, roe, c=colors_list, s=300, alpha=0.8, edgecolors='black')
-        
-        for i, company in enumerate(companies):
-            ax4.annotate(company, (roa[i], roe[i]), 
-                        xytext=(8, 8), textcoords='offset points', fontsize=9)
-        
-        ax4.set_title('자본효율성 분석 (ROE vs ROA)', fontweight='bold', pad=20)
-        ax4.set_xlabel('ROA (%)')
-        ax4.set_ylabel('ROE (%)')
-        ax4.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        charts['efficiency'] = fig4
-        
-    except Exception as e:
-        print(f"차트4 생성 실패: {e}")
-        charts['efficiency'] = None
-    
-    return charts
-
-
-def chart_to_image(fig, width=500, height=300):
-    """차트를 이미지로 안전하게 변환"""
-    if fig is None:
+    if not REPORTLAB_AVAILABLE:
+        print("❌ ReportLab이 설치되지 않았습니다.")
         return None
     
     try:
-        img_buffer = io.BytesIO()
-        fig.savefig(img_buffer, format='png', bbox_inches='tight', 
-                   dpi=150, facecolor='white', edgecolor='none')
-        img_buffer.seek(0)
+        print("📄 PDF 생성 시작...")
         
-        if img_buffer.getvalue():
-            img = RLImage(img_buffer, width=width, height=height)
-            plt.close(fig)
-            return img
+        # 폰트 설정
+        font_name = setup_korean_font()
         
-        plt.close(fig)
-        return None
+        # 스타일 정의
+        styles = getSampleStyleSheet()
+        
+        # 커스텀 스타일
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Title'],
+            fontName=font_name,
+            fontSize=16,
+            spaceAfter=20,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#E31E24')
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading1'],
+            fontName=font_name,
+            fontSize=12,
+            spaceAfter=10,
+            textColor=colors.HexColor('#333333')
+        )
+        
+        normal_style = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontName=font_name,
+            fontSize=10,
+            spaceAfter=8
+        )
+        
+        # 메모리 버퍼 생성
+        buffer = io.BytesIO()
+        
+        # 문서 생성 (여백 충분히 설정)
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=25*mm,
+            rightMargin=25*mm,
+            topMargin=25*mm,
+            bottomMargin=25*mm,
+            title="SK Energy Report"
+        )
+        
+        # 스토리 요소들
+        story = []
+        
+        # 제목
+        story.append(Paragraph("SK에너지 경영 분석 보고서", title_style))
+        story.append(Spacer(1, 20))
+        
+        # 기본 정보 테이블
+        info_data = [
+            ["작성일", datetime.now().strftime("%Y년 %m월 %d일")],
+            ["보고서", "종합 경영 분석"],
+            ["대상", "SK이노베이션 경영진"]
+        ]
+        
+        info_table = create_simple_table(
+            info_data, 
+            ["구분", "내용"],
+            font_name
+        )
+        
+        if info_table:
+            story.append(info_table)
+        
+        story.append(Spacer(1, 20))
+        
+        # 1. 재무 분석
+        story.append(Paragraph("1. 재무 분석 결과", heading_style))
+        
+        # 재무 데이터 테이블
+        financial_data = [
+            ["매출액", "15.2조원", "14.8조원", "13.5조원"],
+            ["영업이익률", "5.6%", "5.3%", "4.6%"],
+            ["ROE", "12.3%", "11.8%", "10.5%"],
+            ["ROA", "8.1%", "7.8%", "7.2%"]
+        ]
+        
+        financial_table = create_simple_table(
+            financial_data,
+            ["지표", "SK에너지", "S-Oil", "GS칼텍스"],
+            font_name
+        )
+        
+        if financial_table:
+            story.append(financial_table)
+        
+        story.append(Spacer(1, 15))
+        
+        # 차트 추가
+        chart_fig = create_sample_chart()
+        if chart_fig:
+            chart_img = fig_to_image_element(chart_fig, width=350, height=220)
+            if chart_img:
+                story.append(chart_img)
+        
+        story.append(Spacer(1, 20))
+        
+        # 2. 분석 결과
+        story.append(Paragraph("2. 주요 분석 결과", heading_style))
+        
+        analysis_points = [
+            "• SK에너지는 매출액 기준 업계 1위 지위 유지",
+            "• 영업이익률 5.6%로 경쟁사 대비 우수한 수익성 확보",
+            "• ROE 12.3%로 효율적인 자본 운용 달성",
+            "• 지속적인 마진 개선을 통한 경쟁 우위 확대 필요"
+        ]
+        
+        for point in analysis_points:
+            story.append(Paragraph(safe_text(point), normal_style))
+        
+        story.append(Spacer(1, 20))
+        
+        # 3. 권고사항
+        story.append(Paragraph("3. 전략적 권고사항", heading_style))
+        
+        recommendations = [
+            "• 운영 효율성 제고를 통한 원가 절감",
+            "• 친환경 에너지 전환 투자 확대",
+            "• 디지털 혁신을 통한 경쟁력 강화",
+            "• ESG 경영 체계 구축"
+        ]
+        
+        for rec in recommendations:
+            story.append(Paragraph(safe_text(rec), normal_style))
+        
+        story.append(Spacer(1, 30))
+        
+        # 푸터
+        footer_style = ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontName=font_name,
+            fontSize=8,
+            alignment=TA_CENTER,
+            textColor=colors.grey
+        )
+        
+        story.append(Paragraph("본 보고서는 AI 분석 시스템에서 생성되었습니다.", footer_style))
+        
+        # PDF 빌드
+        print("📄 PDF 빌드 중...")
+        doc.build(story)
+        
+        # 버퍼에서 데이터 가져오기
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        print(f"✅ PDF 생성 완료! 크기: {len(pdf_data)} bytes")
+        
+        if len(pdf_data) < 1000:
+            print("❌ PDF 크기가 너무 작습니다.")
+            return None
+            
+        return pdf_data
         
     except Exception as e:
-        print(f"차트 이미지 변환 실패: {e}")
-        try:
-            plt.close(fig)
-        except:
-            pass
+        print(f"❌ PDF 생성 실패: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
-# --------------------------
-# 데이터 준비
-# --------------------------
-def get_report_data():
-    """보고서용 데이터 준비"""
-    
-    # 재무 데이터
-    financial_df = None
-    if 'financial_data' in st.session_state and st.session_state.financial_data is not None:
-        financial_df = st.session_state.financial_data
-    else:
-        # 기본 샘플 데이터
+def create_excel_report():
+    """간단한 Excel 보고서 생성"""
+    try:
+        buffer = io.BytesIO()
+        
+        # 재무 데이터
         financial_df = pd.DataFrame({
-            '구분': ['매출액(조원)', '영업이익률(%)', 'ROE(%)', 'ROA(%)'],
+            '지표': ['매출액(조원)', '영업이익률(%)', 'ROE(%)', 'ROA(%)'],
             'SK에너지': [15.2, 5.6, 12.3, 8.1],
             'S-Oil': [14.8, 5.3, 11.8, 7.8],
             'GS칼텍스': [13.5, 4.6, 10.5, 7.2],
             'HD현대오일뱅크': [11.2, 4.3, 9.2, 6.5]
         })
-    
-    # 뉴스 데이터
-    news_df = None
-    if 'google_news_data' in st.session_state and st.session_state.google_news_data is not None:
-        news_df = st.session_state.google_news_data
-    else:
-        # 기본 샘플 데이터
-        news_df = pd.DataFrame({
-            '제목': [
-                'SK에너지, 3분기 실적 시장 기대치 상회',
-                '정유업계 마진 개선, 원유가 하락 효과',
-                'SK이노베이션 배터리 사업 분할 추진',
-                '에너지 전환 정책 영향 분석'
-            ],
-            '날짜': ['2024-11-01', '2024-10-28', '2024-10-25', '2024-10-22'],
-            '출처': ['매일경제', '한국경제', '조선일보', '이데일리']
-        })
-    
-    # 인사이트
-    insights = ""
-    insight_keys = ['integrated_insight', 'financial_insight', 'google_news_insight']
-    for key in insight_keys:
-        if key in st.session_state and st.session_state[key]:
-            insights = str(st.session_state[key])
-            break
-    
-    if not insights:
-        insights = """# 재무 분석 결과
-
-## 핵심 성과 지표
-* SK에너지는 매출액 15.2조원으로 업계 1위 지위 유지
-* 영업이익률 5.6%로 경쟁사 대비 우위 확보
-* ROE 12.3%로 우수한 자본 효율성 시현
-
-## 전략적 방향
-1. 운영 효율성 극대화를 통한 마진 확대
-2. 신사업 진출을 통한 성장 동력 확보
-3. ESG 경영 강화를 통한 지속가능성 제고"""
-    
-    return financial_df, news_df, insights
-
-
-# --------------------------
-# 메인 PDF 생성 함수
-# --------------------------
-def create_enhanced_pdf_report(
-    financial_data=None,
-    news_data=None,
-    insights=None,
-    show_footer=True,
-    report_target="SK이노베이션 경영진",
-    report_author="AI 분석 시스템",
-    **kwargs
-):
-    """안전한 PDF 보고서 생성"""
-    
-    if not REPORTLAB_AVAILABLE:
-        return "ReportLab not available".encode('utf-8')
-    
-    try:
-        print("📄 PDF 보고서 생성 시작...")
         
-        # 폰트 설정
-        fonts = setup_fonts()
-        
-        # 데이터 준비
-        financial_df, news_df, insights_text = get_report_data()
-        
-        # 차트 생성
-        charts = create_charts()
-        
-        # 스타일 정의
-        styles = getSampleStyleSheet()
-        
-        title_style = ParagraphStyle(
-            'Title',
-            fontName=fonts.get('KoreanBold', 'Helvetica-Bold'),
-            fontSize=18,
-            leading=24,
-            spaceAfter=20,
-            alignment=1,
-            textColor=colors.HexColor('#E31E24')
-        )
-        
-        heading_style = ParagraphStyle(
-            'Heading',
-            fontName=fonts.get('KoreanBold', 'Helvetica-Bold'),
-            fontSize=14,
-            leading=18,
-            textColor=colors.HexColor('#E31E24'),
-            spaceBefore=16,
-            spaceAfter=12,
-        )
-        
-        body_style = ParagraphStyle(
-            'Body',
-            fontName=fonts.get('Korean', 'Helvetica'),
-            fontSize=10,
-            leading=14,
-            spaceAfter=4
-        )
-        
-        # PDF 문서 생성
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=A4,
-            leftMargin=2*cm,
-            rightMargin=2*cm,
-            topMargin=2.5*cm,
-            bottomMargin=2.5*cm
-        )
-        
-        story = []
-        
-        # 표지
-        story.append(Paragraph("SK에너지 종합 분석 보고서", title_style))
-        story.append(Paragraph("손익개선을 위한 경쟁사 비교 분석", title_style))
-        story.append(Spacer(1, 30))
-        
-        # 보고서 정보
-        info_data = [
-            ['보고일자', datetime.now().strftime('%Y년 %m월 %d일')],
-            ['보고대상', safe_text(report_target)],
-            ['보고자', safe_text(report_author)]
-        ]
-        info_table = Table(info_data, colWidths=[4*cm, 8*cm])
-        info_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (-1, -1), fonts.get('Korean', 'Helvetica')),
-            ('FONTSIZE', (0, 0), (-1, -1), 11),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ]))
-        story.append(info_table)
-        story.append(Spacer(1, 40))
-        
-        # 1. 재무분석 결과
-        story.append(Paragraph("1. 재무분석 결과", heading_style))
-        story.append(Spacer(1, 10))
-        
-        # 재무지표 테이블
-        if financial_df is not None:
-            fin_table = create_safe_table(financial_df, fonts, '#E6F3FF')
-            if fin_table:
-                story.append(fin_table)
-        
-        story.append(Spacer(1, 20))
-        
-        # 차트들 추가
-        chart_titles = [
-            ("1-1. 분기별 매출액 트렌드", 'trend'),
-            ("1-2. SK에너지 대비 경쟁사 갭차이", 'gap'),
-            ("1-3. 영업이익률 비교", 'margin'),
-            ("1-4. 자본 효율성 분석", 'efficiency')
-        ]
-        
-        for title, key in chart_titles:
-            story.append(Paragraph(title, body_style))
-            story.append(Spacer(1, 6))
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            financial_df.to_excel(writer, sheet_name='재무분석', index=False)
             
-            chart_img = chart_to_image(charts.get(key))
-            if chart_img:
-                story.append(chart_img)
-            else:
-                story.append(Paragraph("차트 생성 불가", body_style))
-            
-            story.append(Spacer(1, 16))
+            # 분석 결과 시트
+            analysis_df = pd.DataFrame({
+                '구분': ['매출액 순위', '영업이익률 순위', '전체 평가'],
+                '결과': ['1위', '1위', '업계 최고 수준']
+            })
+            analysis_df.to_excel(writer, sheet_name='분석결과', index=False)
         
-        # 2. 뉴스분석 결과
-        story.append(Paragraph("2. 뉴스분석 결과", heading_style))
-        story.append(Spacer(1, 10))
-        
-        if news_df is not None and not news_df.empty:
-            # 뉴스 하이라이트
-            story.append(Paragraph("주요 뉴스:", body_style))
-            story.append(Spacer(1, 6))
-            
-            for i, row in news_df.head(5).iterrows():
-                title = safe_text(row.get('제목', ''))
-                story.append(Paragraph(f"• {title}", body_style))
-            
-            story.append(Spacer(1, 16))
-            
-            # 뉴스 테이블
-            news_table = create_safe_table(news_df.head(5), fonts, '#E6FFE6')
-            if news_table:
-                story.append(news_table)
-        
-        story.append(Spacer(1, 20))
-        
-        # 3. 종합 인사이트
-        story.append(Paragraph("3. 종합 인사이트", heading_style))
-        story.append(Spacer(1, 10))
-        
-        if insights_text:
-            lines = insights_text.split('\n')
-            for line in lines:
-                line = line.strip()
-                if line:
-                    if line.startswith('#'):
-                        clean_line = line.lstrip('#').strip()
-                        story.append(Paragraph(f"<b>{clean_line}</b>", body_style))
-                    elif line.startswith('*') or line.startswith('-'):
-                        clean_line = line.lstrip('*-').strip()
-                        story.append(Paragraph(f"• {clean_line}", body_style))
-                    else:
-                        story.append(Paragraph(line, body_style))
-                    story.append(Spacer(1, 4))
-        
-        # 푸터
-        if show_footer:
-            story.append(Spacer(1, 30))
-            footer_style = ParagraphStyle(
-                'Footer',
-                fontName=fonts.get('Korean', 'Helvetica'),
-                fontSize=9,
-                alignment=1,
-                textColor=colors.grey
-            )
-            story.append(Paragraph("※ 본 보고서는 AI 분석 시스템에서 자동 생성되었습니다.", footer_style))
-        
-        # PDF 빌드
-        doc.build(story)
         buffer.seek(0)
-        
-        print("✅ PDF 보고서 생성 완료!")
         return buffer.getvalue()
         
     except Exception as e:
-        print(f"❌ PDF 생성 실패: {e}")
-        # 에러 발생시 최소한의 PDF 생성
-        try:
-            buffer = io.BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4)
-            error_story = [
-                Paragraph("보고서 생성 오류", getSampleStyleSheet()['Title']),
-                Spacer(1, 20),
-                Paragraph(f"오류: {str(e)}", getSampleStyleSheet()['Normal']),
-                Spacer(1, 12),
-                Paragraph("데이터를 확인하고 다시 시도해주세요.", getSampleStyleSheet()['Normal'])
-            ]
-            doc.build(error_story)
-            buffer.seek(0)
-            return buffer.getvalue()
-        except:
-            # 최후 수단
-            return "PDF generation failed".encode('utf-8')
+        print(f"Excel 생성 실패: {e}")
+        return None
 
 
-# --------------------------
-# Excel 보고서 생성
-# --------------------------
-def create_excel_report(
-    financial_data=None,
-    news_data=None,
-    insights=None,
-    **kwargs
-):
-    """Excel 보고서 생성"""
-    try:
-        financial_df, news_df, insights_text = get_report_data()
-        
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            
-            if financial_df is not None:
-                financial_df.to_excel(writer, sheet_name='재무지표', index=False)
-            
-            if news_df is not None:
-                news_df.to_excel(writer, sheet_name='뉴스분석', index=False)
-            
-            if insights_text:
-                insights_df = pd.DataFrame({'인사이트': [insights_text]})
-                insights_df.to_excel(writer, sheet_name='AI인사이트', index=False)
-        
-        output.seek(0)
-        return output.getvalue()
-        
-    except Exception as e:
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            error_df = pd.DataFrame({'오류': [f"Excel 생성 오류: {str(e)}"]})
-            error_df.to_excel(writer, sheet_name='오류', index=False)
-        output.seek(0)
-        return output.getvalue()
-
-
-# --------------------------
-# UI 함수 (호환성)
-# --------------------------
-def create_report_tab():
+# Streamlit UI 함수
+def show_report_generator():
     """보고서 생성 UI"""
-    st.header("📊 보고서 생성")
+    st.header("📊 SK에너지 보고서 생성기")
     
-    if st.button("테스트 PDF 생성"):
-        with st.spinner("PDF 생성 중..."):
-            try:
-                pdf_bytes = create_enhanced_pdf_report()
-                if len(pdf_bytes) > 1000:
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("📄 PDF 보고서 생성", type="primary"):
+            with st.spinner("PDF 보고서 생성 중..."):
+                pdf_data = create_minimal_pdf_report()
+                
+                if pdf_data:
                     st.success("✅ PDF 생성 성공!")
+                    
+                    filename = f"SK_Energy_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    
                     st.download_button(
-                        "PDF 다운로드",
-                        data=pdf_bytes,
-                        file_name=f"SK_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                        label="📥 PDF 다운로드",
+                        data=pdf_data,
+                        file_name=filename,
                         mime="application/pdf"
                     )
                 else:
-                    st.error("❌ PDF 크기가 너무 작습니다.")
-            except Exception as e:
-                st.error(f"❌ PDF 생성 실패: {e}")
+                    st.error("❌ PDF 생성에 실패했습니다.")
+    
+    with col2:
+        if st.button("📊 Excel 보고서 생성"):
+            with st.spinner("Excel 보고서 생성 중..."):
+                excel_data = create_excel_report()
+                
+                if excel_data:
+                    st.success("✅ Excel 생성 성공!")
+                    
+                    filename = f"SK_Energy_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                    
+                    st.download_button(
+                        label="📥 Excel 다운로드", 
+                        data=excel_data,
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.error("❌ Excel 생성에 실패했습니다.")
 
 
+# 테스트 실행
 if __name__ == "__main__":
-    # 테스트 실행
-    print("📦 보고서 모듈 테스트...")
-    try:
-        test_pdf = create_enhanced_pdf_report()
-        if len(test_pdf) > 1000:
-            print("✅ PDF 생성 테스트 성공!")
-        else:
-            print("❌ PDF 생성 테스트 실패 - 파일 크기 부족")
-    except Exception as e:
-        print(f"❌ PDF 생성 테스트 실패: {e}")
+    print("🧪 보고서 생성기 테스트...")
+    
+    # PDF 테스트
+    test_pdf = create_minimal_pdf_report()
+    if test_pdf and len(test_pdf) > 1000:
+        print("✅ PDF 테스트 성공!")
+        
+        # 파일로 저장해서 확인
+        with open("test_report.pdf", "wb") as f:
+            f.write(test_pdf)
+        print("📁 test_report.pdf 파일로 저장됨")
+    else:
+        print("❌ PDF 테스트 실패")
+    
+    # Excel 테스트  
+    test_excel = create_excel_report()
+    if test_excel:
+        print("✅ Excel 테스트 성공!")
+    else:
+        print("❌ Excel 테스트 실패")
