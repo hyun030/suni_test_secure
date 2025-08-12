@@ -196,107 +196,120 @@ def create_gap_trend_chart(quarterly_df: pd.DataFrame):
     return fig
 
 def create_gap_analysis(financial_df: pd.DataFrame, raw_cols: list):
-    """
-    SK에너지 대비 경쟁사 갭차이 분석 (비율지표)
-    계산 지표: 매출원가율(%), 매출총이익률(%), 영업이익률(%), 판관비율(%)
-    financial_df: 행='구분', 열='<회사명>_원시값' 구조
-    """
     import re, numpy as np
     if financial_df.empty or not raw_cols:
         return pd.DataFrame()
 
-    # ── [A] 정규화 도우미 ──────────────────────────────────────────────
     def norm(s: str) -> str:
         if s is None: return ""
         s = str(s)
-        s = re.sub(r"\(.*?\)", "", s)     # 괄호(단위) 제거  ex) (억원)
-        s = re.sub(r"\s+", "", s)         # 공백 제거
-        s = s.replace("−", "-")           # 유니코드 음수 기호 정규화
+        s = re.sub(r"\(.*?\)", "", s)
+        s = re.sub(r"\s+", "", s)
+        s = s.replace("−", "-")
         return s
 
+    # --- 단위 인지 파서: '조'를 억원으로 환산 (표시값 컬럼 대비 안전장치) ---
     def to_float(v):
         if v is None: return None
         if isinstance(v, (int, float)):
             if isinstance(v, float) and np.isnan(v): return None
             return float(v)
         s = str(v)
-        neg = False
-        if s.strip().startswith("(") and s.strip().endswith(")"):
-            neg = True
-            s = s.strip()[1:-1]
-        s = s.replace(",", "")
-        s = s.replace("−", "-")
-        s = re.sub(r"[^0-9.\-]", "", s)
-        if s in ("", "-", "."): return None
+        neg = s.strip().startswith("(") and s.strip().endswith(")")
+        if neg: s = s.strip()[1:-1]
+
+        # 단위 감지 (조/억원/백만원 등 케이스가 섞여올 수 있음)
+        multiplier = 1.0
+        if "조" in s:        # '조원', '조' 등
+            multiplier = 10000.0   # 1조원 = 10,000억원
+        elif "백만원" in s:
+            multiplier = 0.01      # 1억원 = 100백만원
+        elif "천만원" in s:
+            multiplier = 0.1       # 1억원 = 1,000만원
+
+        # 숫자만 추출
+        import re as _re
+        s_num = s.replace(",", "").replace("−", "-")
+        s_num = _re.sub(r"[^0-9.\-]", "", s_num)
+        if s_num in ("", "-", "."): return None
         try:
-            val = float(s)
+            val = float(s_num) * multiplier
             return -val if neg else val
         except:
             return None
 
-    # ── [B] 구분 열 정규화 캐시 ────────────────────────────────────────
     financial_df = financial_df.copy()
     financial_df["_구분_norm"] = financial_df["구분"].apply(norm)
 
-    # 각 지표의 "가능한 이름" 목록(정규화 후 비교)
+    # 금액행 키 / 비율행 키
     KEY_COGS   = [norm("매출원가")]
     KEY_GP     = [norm("매출총이익")]
     KEY_OP     = [norm("영업이익")]
-    KEY_SALES  = [norm("매출액"), norm("매출")]  # 혹시 '매출'로만 올 수도 있음
-    KEY_SGA    = [  # 판관비 표기의 다양한 변형 대응
-        norm("판관비"),
-        norm("판관비(억원)"),
-        norm("판매비와관리비"),
-        norm("판매비와 관리비"),
-        norm("판매비및관리비"),
-        norm("판매관리비"),
-    ]
+    KEY_SALES  = [norm("매출액"), norm("매출")]
+    KEY_SGA    = [norm("판관비"), norm("판관비(억원)"), norm("판매비와관리비"),
+                  norm("판매비와 관리비"), norm("판매비및관리비"), norm("판매관리비")]
+
+    KEY_COGS_R = [norm("매출원가율")]
+    KEY_GP_R   = [norm("매출총이익률")]
+    KEY_OP_R   = [norm("영업이익률")]
+    KEY_SGA_R  = [norm("판관비율")]
 
     def pick_value(keys_norm, colname):
-        # _구분_norm 이 keys_norm 중 하나와 '정확히' 일치하는 행 선택
         m = financial_df[financial_df["_구분_norm"].isin(keys_norm)]
         if m.empty: return None
-        return to_float(m.iloc[0].get(colname))
+        raw = m.iloc[0].get(colname)
+        return to_float(raw)
 
-    # ── [C] 회사별 비율 계산 ──────────────────────────────────────────
     companies = [c.replace("_원시값", "") for c in raw_cols]
-    ratios = {}  # {회사: {지표명: 값}}
 
-    for comp, col in zip(companies, raw_cols):
-        cogs  = pick_value(KEY_COGS,  col)
-        gp    = pick_value(KEY_GP,    col)
-        op    = pick_value(KEY_OP,    col)
-        sales = pick_value(KEY_SALES, col)
+    # --- (A) 우선: 비율행이 있으면 그대로 사용 ---
+    has_rate_rows = financial_df["_구분_norm"].isin(
+        KEY_COGS_R + KEY_GP_R + KEY_OP_R + KEY_SGA_R
+    ).any()
 
-        sga   = pick_value(KEY_SGA,   col)  # ← 판관비 다양한 표기 대응
-        # >>> 여기를 추가하세요: 판관비 행이 없으면 GP - OP로 자동 계산
-        if sga is None and (gp is not None) and (op is not None):
-            sga = gp - op
-        # 매출액이 없으면 sales = gp + cogs 로 복원 시도
-        if sales is None and (gp is not None and cogs is not None):
-            sales = gp + cogs
+    ratios = {}
+    # 표시값 컬럼(원시값 아님)으로 들어왔거나, 비율행이 존재하면 -> 비율 그대로 사용
+    if has_rate_rows and not any(c.endswith("_원시값") for c in raw_cols):
+        for comp, col in zip(companies, raw_cols):
+            ratios[comp] = {
+                "매출원가율(%)":   pick_value(KEY_COGS_R, col),
+                "매출총이익률(%)": pick_value(KEY_GP_R,   col),
+                "영업이익률(%)":   pick_value(KEY_OP_R,   col),
+                "판관비율(%)":     pick_value(KEY_SGA_R,  col),
+            }
+    else:
+        # --- (B) 원시 금액으로 계산 (원시값 컬럼일 때) ---
+        for comp, col in zip(companies, raw_cols):
+            cogs  = pick_value(KEY_COGS,  col)
+            gp    = pick_value(KEY_GP,    col)
+            op    = pick_value(KEY_OP,    col)
+            sales = pick_value(KEY_SALES, col)
+            sga   = pick_value(KEY_SGA,   col)
+            if sga is None and (gp is not None) and (op is not None):
+                sga = gp - op
+            if sales is None and (gp is not None and cogs is not None):
+                sales = gp + cogs
 
-        if sales in (None, 0):
-            cogs_r = gp_r = op_r = sga_r = None
-        else:
-            cogs_r = None if cogs is None else round((cogs / sales) * 100, 2)
-            if gp is None and cogs is not None:
-                gp = sales - cogs
-            gp_r  = None if gp  is None else round((gp  / sales) * 100, 2)
-            op_r  = None if op  is None else round((op  / sales) * 100, 2)
-            sga_r = None if sga is None else round((sga / sales) * 100, 2)
+            if sales in (None, 0):
+                cogs_r = gp_r = op_r = sga_r = None
+            else:
+                cogs_r = None if cogs is None else round((cogs / sales) * 100, 2)
+                if gp is None and cogs is not None:
+                    gp = sales - cogs
+                gp_r  = None if gp  is None else round((gp  / sales) * 100, 2)
+                op_r  = None if op  is None else round((op  / sales) * 100, 2)
+                sga_r = None if sga is None else round((sga / sales) * 100, 2)
 
-        ratios[comp] = {
-            "매출원가율(%)":   cogs_r,
-            "매출총이익률(%)": gp_r,
-            "영업이익률(%)":   op_r,
-            "판관비율(%)":     sga_r,
-        }
+            ratios[comp] = {
+                "매출원가율(%)":   cogs_r,
+                "매출총이익률(%)": gp_r,
+                "영업이익률(%)":   op_r,
+                "판관비율(%)":     sga_r,
+            }
 
-    # ── [D] 갭차이 테이블: 경쟁사% - SK% ─────────────────────
+    # --- 갭 테이블 생성 (동일) ---
     base_company = "SK에너지" if "SK에너지" in ratios else companies[0]
     metrics = ["매출원가율(%)", "매출총이익률(%)", "영업이익률(%)", "판관비율(%)"]
-
     rows = []
     for m in metrics:
         base_val = ratios.get(base_company, {}).get(m, None)
@@ -310,6 +323,7 @@ def create_gap_analysis(financial_df: pd.DataFrame, raw_cols: list):
         rows.append(row)
 
     return pd.DataFrame(rows)
+
 
 def create_gap_chart(gap_analysis_df: pd.DataFrame):
     """갭차이 시각화 차트 (퍼센트포인트 차이)"""
