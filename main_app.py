@@ -7,7 +7,7 @@ import config
 from data.loader import DartAPICollector, QuarterlyDataCollector
 from data.preprocess import SKFinancialDataProcessor, FinancialDataProcessor 
 from insight.openai_api import OpenAIInsightGenerator
-from visualization import (
+from visualization.charts import (
     create_sk_bar_chart, create_sk_radar_chart, 
     create_quarterly_trend_chart, create_gap_trend_chart, 
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
