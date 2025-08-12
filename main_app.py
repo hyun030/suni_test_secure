@@ -314,8 +314,6 @@ def render_manual_upload_tab():
                         SessionManager.save_data('manual_financial_insight', manual_financial_insight, 'manual_financial_insight')
         
                         st.success("✅ 수동 업로드 분석 및 AI 인사이트 생성이 완료되었습니다!")
-                        
-                        st.success("✅ 수동 업로드 분석이 완료되었습니다!")
                     else:
                         st.error("❌ 처리할 수 있는 데이터가 없습니다.")
                         
