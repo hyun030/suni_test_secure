@@ -348,12 +348,12 @@ def render_financial_results():
             )
     
             if PLOTLY_AVAILABLE:
-                st.markdown("**📈 갭차이 시각화 차트**")
+                st.markdown("**📈 비교 분석 시각화 차트**")
                 gap_chart = create_gap_chart(gap_analysis)
                 if gap_chart is not None:
                     st.plotly_chart(gap_chart, use_container_width=True, key="gap_chart")
                 else:
-                    st.info("📊 갭차이 차트를 생성할 수 있는 데이터가 부족합니다.")
+                    st.info("📊 비교 분석 차트를 생성할 수 있는 데이터가 부족합니다.")
         else:
             st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
     else:
@@ -477,12 +477,12 @@ def render_manual_upload_tab():
                     hide_index=False
                 )
                 if PLOTLY_AVAILABLE:
-                    st.markdown("**📈 차이 시각화 차트**")
+                    st.markdown("**📈 비교 분석 시각화 차트**")
                     st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="manual_gap_chart")
             else:
-                st.warning("⚠️ 차이 분석을 위한 충분한 데이터가 없습니다.")
+                st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
         else:
-            st.info("ℹ️ 차이 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
+            st.info("ℹ️ 비교교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
         
 
         # AI 인사이트 표시 (수동 업로드용)
