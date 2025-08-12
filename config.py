@@ -24,15 +24,6 @@ DART_API_KEY = get_api_key("DART_API_KEY", "")
 OPENAI_API_KEY = get_api_key("OPENAI_API_KEY", "")
 GOOGLE_NEWS_API_KEY = get_api_key("GOOGLE_NEWS_API_KEY", "")
 
-# 구글시트 설정
-GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/16g1G89xoxyqF32YLMD8wGYLnQzjq2F_ew6G1AHH4bCA/edit?usp=sharing"
-SHEET_ID = "16g1G89xoxyqF32YLMD8wGYLnQzjq2F_ew6G1AHH4bCA"
-
-# 구글 서비스 계정 키 (JSON 형식)
-# 보안을 위해 st.secrets 또는 환경 변수로 관리하는 것을 강력히 권장합니다.
-# 예: GOOGLE_SERVICE_ACCOUNT_JSON = st.secrets["gcp_service_account"]
-GOOGLE_SERVICE_ACCOUNT_JSON = None # 여기에 JSON 내용을 직접 넣거나, st.secrets에서 불러오세요.
-
 # ==========================
 # 시각화 및 UI 설정
 # ==========================
