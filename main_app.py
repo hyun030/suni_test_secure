@@ -293,19 +293,6 @@ def render_financial_results():
         }
     )
 
-    st.markdown("---")
-    st.subheader("📊 주요 지표 비교")
-    ratio_df = final_df[final_df['구분'].str.contains('%', na=False)]
-    raw_cols = [col for col in final_df.columns if col.endswith('_원시값')]
-    
-    if not ratio_df.empty and raw_cols:
-        chart_df = pd.melt(ratio_df, id_vars=['구분'], value_vars=raw_cols, var_name='회사', value_name='수치')
-        chart_df['회사'] = chart_df['회사'].str.replace('_원시값', '')
-    
-        if PLOTLY_AVAILABLE:
-            st.plotly_chart(create_sk_bar_chart(chart_df), use_container_width=True, key="bar_chart")
-            st.plotly_chart(create_sk_radar_chart(chart_df), use_container_width=True, key="radar_chart")
-
     # 분기별 트렌드 차트 추가
     if SessionManager.is_data_available('quarterly_data'):
         st.markdown("---")
@@ -437,42 +424,66 @@ def render_manual_upload_tab():
         st.markdown("**📋 정리된 재무지표 (표시값)**")
         st.dataframe(final_df[display_cols].set_index('구분'), use_container_width=True)
 
-        st.markdown("---")
-        st.subheader("📊 주요 지표 비교")
-        ratio_df = final_df[final_df['구분'].str.contains('%', na=False)]
-        raw_cols = [col for col in final_df.columns if col.endswith('_원시값')]
-        
-        if not ratio_df.empty and raw_cols and PLOTLY_AVAILABLE:
-            chart_df = pd.melt(ratio_df, id_vars=['구분'], value_vars=raw_cols, var_name='회사', value_name='수치')
-            chart_df['회사'] = chart_df['회사'].str.replace('_원시값', '')
+       
+        # 분기별 트렌드 차트 추가 (수동 업로드용)
+        if SessionManager.is_data_available('quarterly_data'):
+            st.markdown("---")
+            st.subheader("📈 분기별 성과 및 추이 분석")
             
-            st.plotly_chart(create_sk_bar_chart(chart_df), use_container_width=True, key="manual_bar_chart")
-            # 원형 차트 제거 (갭차이 분석 차트로 대체)
+            # 분기별 데이터 요약 정보 표시
+            quarterly_df = st.session_state.quarterly_data
+            st.info(f"📊 수집된 분기별 데이터: {len(quarterly_df)}개 데이터포인트")
+            
+            # 분기별 데이터 요약 통계
+            if '보고서구분' in quarterly_df.columns:
+                report_summary = quarterly_df['보고서구분'].value_counts()
+                st.markdown("**📋 수집된 보고서별 데이터 현황**")
+                for report_type, count in report_summary.items():
+                    st.write(f"• {report_type}: {count}개")
+            
+            # 분기별 데이터 테이블 표시
+            st.markdown("**📋 분기별 재무지표 상세 데이터**")
+            # '연간' 행 제거
+            quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
+            st.dataframe(quarterly_df, use_container_width=True)
+            
+            if PLOTLY_AVAILABLE:
+                # ✅ 분기가 '연간'이 아닌 행만 차트에 사용
+                chart_input = quarterly_df.copy()
+                if '분기' in chart_input.columns:
+                   chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
+
+                st.markdown("**📊 분기별 재무지표 트렌드**")
+                st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="manual_quarterly_trend")
+                
+                st.markdown("**📈 트렌드 분석**")
+                st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="manual_gap_trend")
+            else:
+                st.info("📊 분기별 차트 모듈이 없습니다.")
 
         # 갭차이 분석 추가
         st.markdown("---")
         st.subheader("📈 격차 분석")
-        if raw_cols and len(raw_cols) > 1:
+        raw_cols = resolve_raw_cols_for_gap(final_df)
+        
+        if len(raw_cols) >= 2:
             gap_analysis = create_gap_analysis(final_df, raw_cols)
             if not gap_analysis.empty:
                 st.markdown("**📊 SK에너지 대비 경쟁사 차이 분석표**")
                 st.dataframe(
                     gap_analysis, 
                     use_container_width=True,
-                    column_config={
-                        "지표": st.column_config.TextColumn("지표", width="medium")
-                    },
+                    column_config={"지표": st.column_config.TextColumn("지표", width="medium")},
                     hide_index=False
                 )
-                
-                # 갭차이 시각화
                 if PLOTLY_AVAILABLE:
                     st.markdown("**📈 차이 시각화 차트**")
                     st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="manual_gap_chart")
             else:
-                st.warning("⚠️ 차이 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
+                st.warning("⚠️ 차이 분석을 위한 충분한 데이터가 없습니다.")
         else:
             st.info("ℹ️ 차이 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
+        
 
         # AI 인사이트 표시 (수동 업로드용)
         if SessionManager.is_data_available('manual_financial_insight'):
