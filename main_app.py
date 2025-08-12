@@ -274,14 +274,17 @@ def render_financial_results():
     raw_cols = [col for col in final_df.columns if col.endswith('_원시값')]
     
     if not ratio_df.empty and raw_cols:
-        chart_df = pd.melt(ratio_df, id_vars=['구분'], value_vars=raw_cols, var_name='회사', value_name='수치')
-        chart_df['회사'] = chart_df['회사'].str.replace('_원시값', '')
-        
-        if PLOTLY_AVAILABLE:
-            st.plotly_chart(create_sk_bar_chart(chart_df), use_container_width=True, key="bar_chart")
-            st.plotly_chart(create_sk_radar_chart(chart_df), use_container_width=True, key="radar_chart")
+    chart_df = pd.melt(ratio_df, id_vars=['구분'], value_vars=raw_cols, var_name='회사', value_name='수치')
+    chart_df['회사'] = chart_df['회사'].str.replace('_원시값', '')
+    
+    if PLOTLY_AVAILABLE:
+        # 갭차이 분석 차트로 개선
+        gap_analysis = create_gap_analysis(final_df, raw_cols)
+        if not gap_analysis.empty:
+            st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="gap_chart")
         else:
-            st.info("📊 Plotly 모듈이 없어 차트를 표시할 수 없습니다.")
+            st.plotly_chart(create_sk_bar_chart(chart_df), use_container_width=True, key="bar_chart")
+        st.plotly_chart(create_sk_radar_chart(chart_df), use_container_width=True, key="radar_chart")
 
     # 분기별 트렌드 차트 추가
     if SessionManager.is_data_available('quarterly_data'):
