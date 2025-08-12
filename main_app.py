@@ -347,7 +347,6 @@ def render_financial_results():
             )
     
             if PLOTLY_AVAILABLE:
-                st.markdown("**📈 비교 분석 시각화 차트**")
                 gap_chart = create_gap_chart(gap_analysis)
                 if gap_chart is not None:
                     st.plotly_chart(gap_chart, use_container_width=True, key="gap_chart")
@@ -462,7 +461,7 @@ def render_manual_upload_tab():
 
         # 갭차이 분석 추가
         st.markdown("---")
-        st.subheader("📈 격차 분석")
+        st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
         raw_cols = resolve_raw_cols_for_gap(final_df)
         
         if len(raw_cols) >= 2:
@@ -476,7 +475,6 @@ def render_manual_upload_tab():
                     hide_index=False
                 )
                 if PLOTLY_AVAILABLE:
-                    st.markdown("**📈 비교 분석 시각화 차트**")
                     st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="manual_gap_chart")
             else:
                 st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
