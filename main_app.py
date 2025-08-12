@@ -147,6 +147,12 @@ def render_financial_analysis_tab():
                 q_data_list = []
                 if collect_quarterly and quarterly_years:
                     q_collector = QuarterlyDataCollector(dart)
+
+                    # (디버그) 실제 로드된 클래스/매핑 확인
+                    st.caption(f"🧭 QuarterlyDataCollector 모듈 = {q_collector.__class__.__module__}")
+                    st.caption(f"🧪 보고서코드 매핑 = {getattr(q_collector, 'report_codes', {})}")
+
+                    st.info(f"📊 분기별 데이터 수집 시작... ({', '.join(quarterly_years)}년, {len(selected_companies)}개 회사)")
                     
                     total_quarters = 0
                     for year in quarterly_years:
@@ -159,6 +165,8 @@ def render_financial_analysis_tab():
                     # 최종 결과만 간단하게 표시
                     if q_data_list:
                         st.success(f"✅ 분기별 데이터 수집 완료 ({len(q_data_list)}개 회사, {total_quarters}개 분기)")
+                    else:
+                        st.warning("⚠️ 수집된 분기별 데이터가 없습니다.")    
 
                 if dataframes:
                     # 데이터 저장
