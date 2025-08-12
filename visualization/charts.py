@@ -196,51 +196,121 @@ def create_gap_trend_chart(quarterly_df: pd.DataFrame):
     return fig
 
 def create_gap_analysis(financial_df: pd.DataFrame, raw_cols: list):
-    """SK에너지 대비 경쟁사 갭차이 분석"""
+   def create_gap_analysis(financial_df: pd.DataFrame, raw_cols: list):
+    """
+    SK에너지 대비 경쟁사 갭차이 분석 (비율지표)
+    계산 지표: 매출원가율(%), 매출총이익률(%), 영업이익률(%), 판관비율(%)
+    financial_df: 행='구분', 열='<회사명>_원시값' 구조
+    """
+    import re, numpy as np
     if financial_df.empty or not raw_cols:
         return pd.DataFrame()
-    
-    # SK에너지 컬럼 찾기
-    sk_col = None
-    for col in raw_cols:
-        if 'SK에너지' in col:
-            sk_col = col
-            break
-    
-    if not sk_col:
-        return pd.DataFrame()
-    
-    gap_analysis = []
-    
-    for _, row in financial_df.iterrows():
-        indicator = row['구분']
-        sk_value = row.get(sk_col, 0)
-        
-        if sk_value == 0:
-            continue
-            
-        gap_data = {'지표': indicator, 'SK에너지': sk_value}
-        
-        for col in raw_cols:
-            if col != sk_col:
-                company_name = col.replace('_원시값', '')
-                company_value = row.get(col, 0)
-                
-                # 갭차이 계산 (SK에너지 대비)
-                if sk_value != 0:
-                    gap_percentage = ((company_value - sk_value) / abs(sk_value)) * 100
-                    gap_amount = company_value - sk_value
-                else:
-                    gap_percentage = 0
-                    gap_amount = company_value
-                
-                gap_data[f'{company_name}_갭(%)'] = round(gap_percentage, 2)
-                gap_data[f'{company_name}_갭(금액)'] = gap_amount
-                gap_data[f'{company_name}_원본값'] = company_value
-        
-        gap_analysis.append(gap_data)
-    
-    return pd.DataFrame(gap_analysis)
+
+    # ── [A] 정규화 도우미 ──────────────────────────────────────────────
+    def norm(s: str) -> str:
+        if s is None: return ""
+        s = str(s)
+        s = re.sub(r"\(.*?\)", "", s)     # 괄호(단위) 제거  ex) (억원)
+        s = re.sub(r"\s+", "", s)         # 공백 제거
+        s = s.replace("−", "-")           # 유니코드 음수 기호 정규화
+        return s
+
+    def to_float(v):
+        if v is None: return None
+        if isinstance(v, (int, float)):
+            if isinstance(v, float) and np.isnan(v): return None
+            return float(v)
+        s = str(v)
+        neg = False
+        if s.strip().startswith("(") and s.strip().endswith(")"):
+            neg = True
+            s = s.strip()[1:-1]
+        s = s.replace(",", "")
+        s = s.replace("−", "-")
+        s = re.sub(r"[^0-9.\-]", "", s)
+        if s in ("", "-", "."): return None
+        try:
+            val = float(s)
+            return -val if neg else val
+        except:
+            return None
+
+    # ── [B] 구분 열 정규화 캐시 ────────────────────────────────────────
+    financial_df = financial_df.copy()
+    financial_df["_구분_norm"] = financial_df["구분"].apply(norm)
+
+    # 각 지표의 "가능한 이름" 목록(정규화 후 비교)
+    KEY_COGS   = [norm("매출원가")]
+    KEY_GP     = [norm("매출총이익")]
+    KEY_OP     = [norm("영업이익")]
+    KEY_SALES  = [norm("매출액"), norm("매출")]  # 혹시 '매출'로만 올 수도 있음
+    KEY_SGA    = [  # 판관비 표기의 다양한 변형 대응
+        norm("판관비"),
+        norm("판관비(억원)"),
+        norm("판매비와관리비"),
+        norm("판매비와 관리비"),
+        norm("판매비및관리비"),
+        norm("판매관리비"),
+    ]
+
+    def pick_value(keys_norm, colname):
+        # _구분_norm 이 keys_norm 중 하나와 '정확히' 일치하는 행 선택
+        m = financial_df[financial_df["_구분_norm"].isin(keys_norm)]
+        if m.empty: return None
+        return to_float(m.iloc[0].get(colname))
+
+    # ── [C] 회사별 비율 계산 ──────────────────────────────────────────
+    companies = [c.replace("_원시값", "") for c in raw_cols]
+    ratios = {}  # {회사: {지표명: 값}}
+
+    for comp, col in zip(companies, raw_cols):
+        cogs  = pick_value(KEY_COGS,  col)
+        gp    = pick_value(KEY_GP,    col)
+        op    = pick_value(KEY_OP,    col)
+        sales = pick_value(KEY_SALES, col)
+
+        sga   = pick_value(KEY_SGA,   col)  # ← 판관비 다양한 표기 대응
+        # >>> 여기를 추가하세요: 판관비 행이 없으면 GP - OP로 자동 계산
+        if sga is None and (gp is not None) and (op is not None):
+            sga = gp - op
+        # 매출액이 없으면 sales = gp + cogs 로 복원 시도
+        if sales is None and (gp is not None and cogs is not None):
+            sales = gp + cogs
+
+        if sales in (None, 0):
+            cogs_r = gp_r = op_r = sga_r = None
+        else:
+            cogs_r = None if cogs is None else round((cogs / sales) * 100, 2)
+            if gp is None and cogs is not None:
+                gp = sales - cogs
+            gp_r  = None if gp  is None else round((gp  / sales) * 100, 2)
+            op_r  = None if op  is None else round((op  / sales) * 100, 2)
+            sga_r = None if sga is None else round((sga / sales) * 100, 2)
+
+        ratios[comp] = {
+            "매출원가율(%)":   cogs_r,
+            "매출총이익률(%)": gp_r,
+            "영업이익률(%)":   op_r,
+            "판관비율(%)":     sga_r,
+        }
+
+    # ── [D] 갭(퍼센트포인트) 테이블: 경쟁사% - SK% ─────────────────────
+    base_company = "SK에너지" if "SK에너지" in ratios else companies[0]
+    metrics = ["매출원가율(%)", "매출총이익률(%)", "영업이익률(%)", "판관비율(%)"]
+
+    rows = []
+    for m in metrics:
+        base_val = ratios.get(base_company, {}).get(m, None)
+        row = {"지표": m, base_company: base_val}
+        for comp in companies:
+            if comp == base_company: 
+                continue
+            val = ratios.get(comp, {}).get(m, None)
+            row[f"{comp}_갭(pp)"] = None if (base_val is None or val is None) else round(val - base_val, 2)
+            row[f"{comp}_원본값"] = val
+        rows.append(row)
+
+    return pd.DataFrame(rows)
 
 def create_gap_chart(gap_analysis_df: pd.DataFrame):
     """갭차이 시각화 차트"""
