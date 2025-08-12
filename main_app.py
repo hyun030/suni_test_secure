@@ -457,10 +457,11 @@ def render_report_generation_tab():
                     if report_format == "PDF":
                         file_bytes = create_enhanced_pdf_report(
                             financial_data=financial_data_for_report,
-                            news_data=st.session_state.get('news_data'),
+                            news_data=None,
                             insights=st.session_state.get('integrated_insight') or 
                                    st.session_state.get('financial_insight') or 
-                                   st.session_state.get('news_insight'),
+                                   st.session_state.get('news_insight') or
+                                   st.session_state.google_news_insight,
                             quarterly_df=quarterly_df,
                             selected_charts=selected_charts,
                             show_footer=show_footer,
