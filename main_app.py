@@ -175,27 +175,21 @@ except ImportError as e:
     def create_gap_chart(df):
         return None
 
-# 6. Export 모듈 안전 import (우리가 만든 보고서 모듈 사용)
+# 6. 보고서 모듈 직접 import (우리가 만든 것만 사용)
 try:
-    from util.export import create_excel_report, create_enhanced_pdf_report
-    print("✅ util.export 모듈 로드 성공")
+    from reports.report_generator import create_enhanced_pdf_report, create_excel_report
+    print("✅ reports.report_generator 모듈 로드 성공")
     EXPORT_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️ util.export 모듈 없음: {e}")
+    print(f"⚠️ reports.report_generator 모듈 없음: {e}")
     EXPORT_AVAILABLE = False
     
-    # 우리가 만든 보고서 모듈 사용
-    try:
-        from reports.report_generator import create_enhanced_pdf_report, create_excel_report
-        print("✅ reports.report_generator 모듈 로드 성공 (대체)")
-        EXPORT_AVAILABLE = True
-    except ImportError as e2:
-        print(f"⚠️ reports.report_generator 모듈도 없음: {e2}")
-        
-        def create_enhanced_pdf_report(*args, **kwargs):
-            return "PDF 생성 불가".encode('utf-8')
-        def create_excel_report(*args, **kwargs):
-            return "Excel 생성 불가".encode('utf-8')
+    # 기본 함수 생성
+    def create_enhanced_pdf_report(*args, **kwargs):
+        return "PDF generation not available".encode('utf-8')
+    
+    def create_excel_report(*args, **kwargs):
+        return "Excel generation not available".encode('utf-8')
 
 # 7. News Collector 모듈 안전 import
 try:
