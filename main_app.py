@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 import json
 import config
-from data.loader import DartAPICollector, QuarterlyDataCollector, SKNewsCollector
+from data.loader import DartAPICollector, QuarterlyDataCollector
 
 # 안전한 임포트 (try-except 적용)
 try:
@@ -43,8 +43,8 @@ class SessionManager:
         """세션 상태 초기화 및 데이터 지속성 보장"""
         # 핵심 데이터 변수들
         core_vars = [
-            'financial_data', 'quarterly_data', 'news_data', 
-            'financial_insight', 'news_insight', 'integrated_insight',
+            'financial_data', 'quarterly_data',
+            'financial_insight', 'integrated_insight', 'integrated_insight',
             'selected_companies', 'manual_financial_data',
             'google_news_data', 'google_news_insight'
         ]
@@ -246,11 +246,11 @@ def render_financial_results():
 
     # 갭차이 분석
     st.markdown("---")
-    st.subheader("📈 갭차이 분석")
+    st.subheader("📈 SK에너지 대비 경쟁사 차이 분석")
     if raw_cols and len(raw_cols) > 1:
         gap_analysis = create_gap_analysis(final_df, raw_cols)
         if not gap_analysis.empty:
-            st.markdown("**📊 SK에너지 대비 경쟁사 갭차이 분석표**")
+            st.markdown("**📊 SK에너지 대비 경쟁사 차이 분석표**")
             st.dataframe(
                 gap_analysis, 
                 use_container_width=True,
@@ -262,12 +262,12 @@ def render_financial_results():
             
             # 갭차이 시각화
             if PLOTLY_AVAILABLE:
-                st.markdown("**📈 갭차이 시각화 차트**")
+                st.markdown("**📈 격차 분석 시각화 차트**")
                 st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="gap_chart")
         else:
-            st.warning("⚠️ 갭차이 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
+            st.warning("⚠️ 차이 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
     else:
-        st.info("ℹ️ 갭차이 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
+        st.info("ℹ️ 차이 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
 
     # AI 인사이트 표시 (맨 마지막)
     if SessionManager.is_data_available('financial_insight'):
@@ -307,6 +307,13 @@ def render_manual_upload_tab():
                         manual_data = processor.merge_company_data(dataframes)
                         SessionManager.save_data('manual_financial_data', manual_data)
                         SessionManager.save_data('financial_data', manual_data)
+
+                        # AI 인사이트 생성 추가
+                        openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
+                        manual_financial_insight = openai.generate_financial_insight(manual_data)
+                        SessionManager.save_data('manual_financial_insight', manual_financial_insight, 'manual_financial_insight')
+        
+                        st.success("✅ 수동 업로드 분석 및 AI 인사이트 생성이 완료되었습니다!")
                         
                         st.success("✅ 수동 업로드 분석이 완료되었습니다!")
                     else:
@@ -341,11 +348,11 @@ def render_manual_upload_tab():
 
         # 갭차이 분석 추가
         st.markdown("---")
-        st.subheader("📈 갭차이 분석")
+        st.subheader("📈 격차 분석")
         if raw_cols and len(raw_cols) > 1:
             gap_analysis = create_gap_analysis(final_df, raw_cols)
             if not gap_analysis.empty:
-                st.markdown("**📊 SK에너지 대비 경쟁사 갭차이 분석표**")
+                st.markdown("**📊 SK에너지 대비 경쟁사 차이 분석표**")
                 st.dataframe(
                     gap_analysis, 
                     use_container_width=True,
@@ -357,84 +364,16 @@ def render_manual_upload_tab():
                 
                 # 갭차이 시각화
                 if PLOTLY_AVAILABLE:
-                    st.markdown("**📈 갭차이 시각화 차트**")
+                    st.markdown("**📈 차이 시각화 차트**")
                     st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="manual_gap_chart")
             else:
-                st.warning("⚠️ 갭차이 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
+                st.warning("⚠️ 차이 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
         else:
-            st.info("ℹ️ 갭차이 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
-
-def render_news_analysis_tab():
-    """뉴스분석 탭 렌더링"""
-    st.subheader("📰 경쟁사 벤치마킹 뉴스 분석")
-    
-    # 분석 상태 표시
-    if SessionManager.is_data_available('news_data'):
-        status = SessionManager.get_data_status('news_data')
-        if status.get('completed'):
-            st.success(f"✅ 뉴스 분석 완료 ({status.get('timestamp', '시간 정보 없음')})")
-    
-    st.sidebar.subheader("🔍 뉴스 검색 키워드 설정")
-    keyword_str = st.sidebar.text_area(
-        "키워드 (쉼표로 구분)", 
-        ", ".join(st.session_state.get('custom_keywords', config.BENCHMARKING_KEYWORDS))
-    )
-    st.session_state.custom_keywords = [kw.strip() for kw in keyword_str.split(',')]
-    
-    # RSS 뉴스 수집 및 분석
-    if st.button("🔄 최신 벤치마킹 뉴스 수집 및 분석", type="primary"):
-        with st.spinner("뉴스 수집 및 AI 분석 중..."):
-            try:
-                collector = SKNewsCollector(custom_keywords=st.session_state.custom_keywords)
-                news_df = collector.collect_news()
-                
-                if news_df is not None and not news_df.empty:
-                    SessionManager.save_data('news_data', news_df)
-                    
-                    # AI 인사이트 생성
-                    openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
-                    news_insight = openai.generate_news_insight(news_df)
-                    SessionManager.save_data('news_insight', news_insight, 'news_insight')
-                    
-                    st.success("✅ 뉴스 수집 및 AI 분석이 완료되었습니다!")
-                else:
-                    st.warning("관련 뉴스를 찾지 못했습니다.")
-                    st.session_state.news_insight = None
-                    
-            except Exception as e:
-                st.error(f"뉴스 분석 중 오류가 발생했습니다: {str(e)}")
-
-    # 뉴스 목록 표시
-    if SessionManager.is_data_available('news_data'):
-        st.subheader("📋 수집된 뉴스 목록")
-        
-        # 회사 컬럼이 있으면 표시에 포함
-        display_columns = ["제목", "URL", "날짜", "요약"]
-        if "회사" in st.session_state.news_data.columns:
-            display_columns.insert(1, "회사")  # 제목 다음에 회사 컬럼 추가
-        
-        st.dataframe(
-            st.session_state.news_data[display_columns], 
-            use_container_width=True, 
-            column_config={
-                "제목": st.column_config.TextColumn("제목", width="large"),
-                "회사": st.column_config.TextColumn("회사", width="medium") if "회사" in display_columns else None,
-                "URL": st.column_config.LinkColumn("🔗 링크", width="medium"),
-                "날짜": st.column_config.TextColumn("날짜", width="small"),
-                "요약": st.column_config.TextColumn("요약", width="large")
-            }
-        )
-        
-        st.markdown("---")
-    
-    # AI 인사이트 표시
-    if SessionManager.is_data_available('news_insight'):
-        st.subheader("🤖 AI 종합 분석 리포트")
-        st.markdown(st.session_state.news_insight)
+            st.info("ℹ️ 차이 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
 
 def render_integrated_insight_tab():
     """통합 인사이트 탭 렌더링"""
-    st.subheader("🧠 통합 인사이트 생성")
+    st.subheader("�� 통합 인사이트 생성")
     
     # 분석 상태 표시
     if SessionManager.is_data_available('integrated_insight'):
@@ -443,15 +382,29 @@ def render_integrated_insight_tab():
             st.success(f"✅ 통합 인사이트 완료 ({status.get('timestamp', '시간 정보 없음')})")
     
     if st.button("🚀 통합 인사이트 생성", type="primary"):
-        if (SessionManager.is_data_available('financial_insight') and 
-            SessionManager.is_data_available('news_insight')):
-            
-            with st.spinner("재무 인사이트와 뉴스 인사이트를 통합 분석 중..."):
+        # 사용 가능한 인사이트들 수집
+        available_insights = []
+        
+        if SessionManager.is_data_available('financial_insight'):
+            available_insights.append(("자동 재무분석", st.session_state.financial_insight))
+        
+        if SessionManager.is_data_available('manual_financial_insight'):
+            available_insights.append(("수동 재무분석", st.session_state.manual_financial_insight))
+        
+        if SessionManager.is_data_available('google_news_insight'):
+            available_insights.append(("구글 뉴스 분석", st.session_state.google_news_insight))
+        
+        if available_insights:
+            with st.spinner("모든 인사이트를 통합 분석 중..."):
                 try:
                     openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
+                    
+                    # 모든 인사이트를 하나의 텍스트로 결합
+                    combined_insights = "\n\n".join([f"=== {title} ===\n{insight}" for title, insight in available_insights])
+                    
                     integrated_insight = openai.generate_integrated_insight(
-                        st.session_state.financial_insight,
-                        st.session_state.news_insight
+                        combined_insights,
+                        None
                     )
                     SessionManager.save_data('integrated_insight', integrated_insight, 'integrated_insight')
                     st.success("✅ 통합 인사이트가 생성되었습니다!")
@@ -459,14 +412,14 @@ def render_integrated_insight_tab():
                 except Exception as e:
                     st.error(f"통합 인사이트 생성 중 오류가 발생했습니다: {str(e)}")
         else:
-            st.warning("⚠️ 재무 인사이트와 뉴스 인사이트가 모두 필요합니다. 먼저 재무분석과 뉴스분석을 완료해주세요.")
+            st.warning("⚠️ 최소 하나의 인사이트(재무분석 또는 구글뉴스)가 필요합니다.")
     
     # 통합 인사이트 결과 표시
     if SessionManager.is_data_available('integrated_insight'):
         st.subheader("🤖 통합 인사이트 결과")
         st.markdown(st.session_state.integrated_insight)
     else:
-        st.info("재무분석과 뉴스분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
+        st.info("재무분석 또는 구글뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
 
 def render_report_generation_tab():
     """보고서 생성 탭 렌더링"""
@@ -521,10 +474,11 @@ def render_report_generation_tab():
                     else:
                         file_bytes = create_excel_report(
                             financial_data=financial_data_for_report,
-                            news_data=st.session_state.get('news_data'),
+                            news_data=Node,
                             insights=st.session_state.get('integrated_insight') or 
                                    st.session_state.get('financial_insight') or 
-                                   st.session_state.get('news_insight')
+                                   st.session_state.get('manual_financial_insight') or
+                                   st.session_state.get('google_news_insight') #구글 뉴스 인사이트로 변경
                         )
                         filename = "SK_Energy_Analysis_Report.xlsx"
                         mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -556,15 +510,14 @@ def main():
     # 세션 상태 초기화
     SessionManager.initialize()
     
-    st.title("⚡ SK에너지 경쟁사 분석 대시보드")
+    st.title("⚡SK Profit+: 손익 개선 전략")
     
     # 마지막 분석 시간 표시
     if st.session_state.last_analysis_time:
         st.info(f"🕒 마지막 분석 시간: {st.session_state.last_analysis_time}")
     
     tabs = st.tabs([
-        "📈 재무분석", "📁 수동 파일 업로드", "📰 뉴스분석", 
-        "🔍 Google News 수집", "🧠 통합 인사이트", "📄 보고서 생성"
+        "📈 재무분석", "📁 수동 파일 업로드", "🔍 Google News 수집", "🧠 통합 인사이트", "📄 보고서 생성"
     ])
     
     with tabs[0]:  # 재무분석 탭
@@ -573,16 +526,13 @@ def main():
     with tabs[1]:  # 수동 파일 업로드 탭
         render_manual_upload_tab()
     
-    with tabs[2]:  # 뉴스분석 탭
-        render_news_analysis_tab()
-    
-    with tabs[3]:  # Google News 수집 탭
+    with tabs[2]:  # Google News 수집 탭
         create_google_news_tab()
     
-    with tabs[4]:  # 통합 인사이트 탭
+    with tabs[3]:  # 통합 인사이트 탭
         render_integrated_insight_tab()
     
-    with tabs[5]:  # 보고서 생성 탭
+    with tabs[4]:  # 보고서 생성 탭
         render_report_generation_tab()
 
 if __name__ == "__main__":
