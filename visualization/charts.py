@@ -305,7 +305,7 @@ def create_gap_analysis(financial_df: pd.DataFrame, raw_cols: list):
             if comp == base_company: 
                 continue
             val = ratios.get(comp, {}).get(m, None)
-            row[f"{comp}_갭(%)"] = None if (base_val is None or val is None) else round(val - base_val, 2)
+            row[f"{comp}_갭(pp)"] = None if (base_val is None or val is None) else round(val - base_val, 2)
             row[f"{comp}_원본값"] = val
         rows.append(row)
 
@@ -332,7 +332,7 @@ def create_gap_chart(gap_analysis_df: pd.DataFrame):
                 chart_data.append({
                     '지표': indicator,
                     '회사': company,
-                    '갭(%)': gap_value
+                    '갭(pp)': gap_value
                 })
     
     chart_df = pd.DataFrame(chart_data)
@@ -345,14 +345,14 @@ def create_gap_chart(gap_analysis_df: pd.DataFrame):
     color_map = {comp: get_company_color(comp, companies) for comp in companies}
     
     fig = px.bar(
-        chart_df, x='지표', y='갭(%)', color='회사',
-        title="📊 SK에너지 대비 경쟁사 갭차이 분석",
-        text='갭(%)', color_discrete_map=color_map, barmode='group', height=500
+        chart_df, x='지표', y='갭(pp)', color='회사',
+        title="📊 SK에너지 대비 경쟁사 갭차이 분석 (퍼센트포인트)",
+        text='갭(pp)', color_discrete_map=color_map, barmode='group', height=500
     )
     
-    fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+    fig.update_traces(texttemplate='%{text:.1f}pp', textposition='outside')
     fig.update_layout(
-        yaxis_title="갭차이 (%)", xaxis_title="재무 지표", legend_title="회사",
+        yaxis_title="갭차이 (퍼센트포인트)", xaxis_title="재무 지표", legend_title="회사",
         font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif"),
         # 0선 추가
         shapes=[dict(
