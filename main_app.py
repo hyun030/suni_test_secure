@@ -193,9 +193,9 @@ except ImportError as e:
         print(f"⚠️ reports.report_generator 모듈도 없음: {e2}")
         
         def create_enhanced_pdf_report(*args, **kwargs):
-            return b"PDF 생성 불가"
+            return "PDF 생성 불가".encode('utf-8')
         def create_excel_report(*args, **kwargs):
-            return b"Excel 생성 불가"
+            return "Excel 생성 불가".encode('utf-8')
 
 # 7. News Collector 모듈 안전 import
 try:
