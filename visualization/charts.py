@@ -18,7 +18,7 @@ def create_sk_bar_chart(chart_df: pd.DataFrame):
     
     fig = px.bar(
         chart_df, x='구분', y='수치', color='회사',
-        title="💼 SK에너지 vs 경쟁사 수익성 지표 비교",
+        title="📊 주요 지표 비교",
         text='수치', color_discrete_map=color_map, barmode='group', height=450
     )
     fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
@@ -121,7 +121,7 @@ def create_sk_radar_chart(chart_df):
                 tickangle=0  # 각도 조정으로 가독성 향상
             )
         ),
-        title="🎯 SK에너지 vs 경쟁사 수익성 지표 비교 (정규화) - 가독성 개선",
+        title="📊 주요 지표 비교 (정규화)",
         height=650,  # 높이를 늘려서 더 여유롭게 표시
         showlegend=True,
         legend=dict(
@@ -161,7 +161,7 @@ def create_quarterly_trend_chart(quarterly_df: pd.DataFrame):
             ))
     
     fig.update_layout(
-        barmode='group', title="📈 분기별 매출액 추이",
+        barmode='group', title="📊 분기별 재무지표 트렌드",
         xaxis_title="분기", yaxis_title="매출액 (조원)",
         font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
     )
@@ -188,7 +188,7 @@ def create_gap_trend_chart(quarterly_df: pd.DataFrame):
             ))
     
     fig.update_layout(
-        title="📊 분기별 영업이익률 갭 추이",
+        title="📈 트렌드 분석",
         xaxis_title="분기", yaxis_title="영업이익률 (%)",
         font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif"),
         height=450
@@ -339,7 +339,7 @@ def create_gap_chart(gap_analysis_df: pd.DataFrame):
         chart_df, x='지표', y='갭(퍼센트포인트)', color='회사',
         text='갭(퍼센트포인트)', color_discrete_map=color_map,
         barmode='group', height=500,
-        title="📊 SK에너지 대비 경쟁사 갭차이 분석 (퍼센트포인트)"
+        title="📈 갭차이 시각화 차트"
     )
     fig.update_traces(texttemplate='%{text:.1f}pp', textposition='outside', cliponaxis=False)
     fig.add_hline(y=0, line_dash='dash', line_color='red',
