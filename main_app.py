@@ -424,11 +424,11 @@ def render_manual_upload_tab():
 
         # 갭차이 분석 추가
         st.markdown("---")
-        st.subheader("📈 격차 분석")
+        st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
         if raw_cols and len(raw_cols) > 1:
             gap_analysis = create_gap_analysis(final_df, raw_cols)
             if not gap_analysis.empty:
-                st.markdown("**📊 SK에너지 대비 경쟁사 차이 분석표**")
+                st.markdown("**📊 SK에너지 대비 경쟁사 비교 분석표**")
                 st.dataframe(
                     gap_analysis, 
                     use_container_width=True,
