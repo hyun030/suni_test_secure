@@ -509,6 +509,153 @@ class FinancialDataProcessor:
         return merged.fillna("-")
 
 # --- backward compatibility shim ---
-SKFinancialDataProcessor = FinancialDataProcessor
-__all__ = ["FinancialDataProcessor", "SKFinancialDataProcessor"]
+# SKFinancialDataProcessor = FinancialDataProcessor
 
+class SKFinancialDataProcessor:
+    """DART API 데이터를 SK에너지 중심의 손익계산서로 가공하는 클래스"""
+    
+    # 기존 FinancialDataProcessor의 메서드들을 상속받기 위해 인스턴스 생성
+    def __init__(self):
+        self.base_processor = FinancialDataProcessor()
+        # 개선된 DART API 매핑
+        self.INCOME_STATEMENT_MAP = {
+            # 매출 관련 (더 정확한 매핑)
+            'sales': '매출액', 'revenue': '매출액', '매출액': '매출액', '매출': '매출액', 
+            '제품매출': '매출액', '상품매출': '매출액', '용역 및 기타매출': '매출액',
+            # 매출원가
+            'costofgoodssold': '매출원가', 'cogs': '매출원가', 'costofsales': '매출원가',
+            '매출원가': '매출원가', '원가': '매출원가', '상품매출원가': '매출원가', '제품매출원가': '매출원가',
+            # 매출총이익
+            'grossprofit': '매출총이익', '매출총이익': '매출총이익', '총이익': '매출총이익',
+            # 판관비
+            'sellinggeneraladministrativeexpenses': '판매비와관리비',
+            'sellingandadministrativeexpenses': '판매비와관리비',
+            'sga': '판매비와관리비', '판매비와관리비': '판매비와관리비', '판관비': '판매비와관리비',
+            '판매관리비': '판매비와관리비',
+            # 영업이익
+            'operatingincome': '영업이익', 'operatingprofit': '영업이익',
+            '영업이익': '영업이익', '영업손익': '영업이익', '영업이익(손실)': '영업이익',
+            # 당기순이익
+            'netincome': '당기순이익', 'netprofit': '당기순이익',
+            '당기순이익': '당기순이익', '순이익': '당기순이익', '순손익': '당기순이익',
+            '당기순이익(손실)': '당기순이익',
+            # 영업외수익/비용
+            'nonoperatingincome': '영업외수익', '기타수익': '영업외수익', '영업외수익': '영업외수익',
+            'nonoperatingexpense': '영업외비용', '기타비용': '영업외비용', '영업외비용': '영업외비용',
+        }
+
+    def process_dart_data(self, dart_df: pd.DataFrame, company_name: str) -> pd.DataFrame | None:
+        """개선된 DART API 데이터 처리"""
+        if dart_df is None or dart_df.empty:
+            return None
+
+        items: dict[str, float] = {}
+
+        for _, row in dart_df.iterrows():
+            raw_name = str(row.get('account_nm', '')).strip()
+            amt = self._parse_amount(row.get('thstrm_amount', 0))
+
+            if not raw_name:
+                continue
+            key = self._norm(raw_name)
+
+            # 우선순위 기반 매핑 (더 정확한 매칭)
+            matched_item = None
+            matched_priority = 0
+            
+            for k, std in self.INCOME_STATEMENT_MAP.items():
+                k_norm = self._norm(k)
+                if k_norm and k_norm in key:
+                    # 정확한 매칭이 우선
+                    if k_norm == key:
+                        current_priority = 100
+                    else:
+                        current_priority = len(k_norm)
+                    
+                    if current_priority > matched_priority:
+                        matched_item = std
+                        matched_priority = current_priority
+
+            if matched_item:
+                # 중복 계정은 절댓값 큰 금액을 채택
+                if matched_item not in items or abs(amt) > abs(items[matched_item]):
+                    items[matched_item] = amt
+
+        # 파생 계산
+        if '매출총이익' not in items and '매출액' in items and '매출원가' in items:
+            items['매출총이익'] = items['매출액'] - items['매출원가']
+        if '영업이익' not in items and '매출총이익' in items and '판매비와관리비' in items:
+            items['영업이익'] = items['매출총이익'] - items['판매비와관리비']
+
+        if not items:
+            return None
+
+        return self._build_statement(items, company_name)
+
+    def _parse_amount(self, s) -> float:
+        """DART 금액 문자열 → float (괄호=음수, 콤마 제거)"""
+        v = str(s or '').strip()
+        if not v:
+            return 0.0
+        neg = '(' in v and ')' in v
+        v = v.replace('(', '').replace(')', '').replace(',', '')
+        try:
+            num = float(v)
+        except:
+            num = 0.0
+        return -num if neg else num
+
+    def _norm(self, name: str) -> str:
+        """계정과목명 정규화(소문자, 영/숫/한글만)"""
+        return re.sub(r'[^a-z0-9가-힣]', '', (name or '').lower())
+
+    def _build_statement(self, data: dict, company: str) -> pd.DataFrame:
+        """손익계산서 생성"""
+        order = ['매출액','매출원가','매출총이익','판매비와관리비','영업이익','영업외수익','영업외비용','당기순이익']
+        rows = []
+        for k in order:
+            if k in data:
+                rows.append({'구분': k, company: self._fmt_amt(data[k]), f'{company}_원시값': data[k]})
+        sales = data.get('매출액', 0)
+        if sales:
+            def r(name, num): rows.append({'구분': name, company: f"{(num/sales)*100:.2f}%", f'{company}_원시값': (num/sales)*100})
+            if '영업이익' in data: r('영업이익률(%)', data['영업이익'])
+            if '매출총이익' in data: r('매출총이익률(%)', data['매출총이익'])
+            if '당기순이익' in data: r('순이익률(%)', data['당기순이익'])
+            if '매출원가' in data: r('매출원가율(%)', data['매출원가'])
+            if '판매비와관리비' in data: r('판관비율(%)', data['판매비와관리비'])
+        return pd.DataFrame(rows)
+
+    def _fmt_amt(self, v: float) -> str:
+        """금액 포맷팅"""
+        if v == 0: return "0원"
+        sign = "▼ " if v < 0 else ""
+        a = abs(v)
+        if a >= 1_000_000_000_000: return f"{sign}{v/1_000_000_000_000:.1f}조원"
+        if a >= 100_000_000:        return f"{sign}{v/100_000_000:.0f}억원"
+        if a >= 10_000:             return f"{sign}{v/10_000:.0f}만원"
+        return f"{sign}{v:,.0f}원"
+
+    def merge_company_data(self, dataframes: list[pd.DataFrame]):
+        """회사 데이터 병합 (SK에너지 우선)"""
+        if not dataframes: return pd.DataFrame()
+        if len(dataframes) == 1: return dataframes[0]
+        
+        merged = dataframes[0].copy()
+        for df in dataframes[1:]:
+            try:
+                cols = [c for c in df.columns if c != '구분' and not c.endswith('_원시값')]
+                for c in cols:
+                    merged = merged.set_index('구분').join(df.set_index('구분')[c], how='outer').reset_index()
+            except Exception as e:
+                st.warning(f"⚠️ 병합 중 오류: {e}")
+        
+        # SK에너지 우선 정렬
+        cols = merged.columns.tolist()
+        sk_cols = [c for c in cols if 'SK에너지' in c]
+        other_cols = [c for c in cols if c not in sk_cols and c != '구분']
+        final_cols = ['구분'] + sk_cols + other_cols
+        
+        return merged[final_cols].fillna("-")
+
+__all__ = ["FinancialDataProcessor", "SKFinancialDataProcessor"]
