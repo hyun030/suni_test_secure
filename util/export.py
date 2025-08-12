@@ -99,158 +99,25 @@ def create_simple_table(df, registered_fonts, header_color='#E31E24'):
         return None
 
 
-def extract_chart_data(fig):
-    """matplotlib 차트에서 데이터 추출해서 DataFrame으로 변환"""
+def add_chart_to_story(story, fig, title, body_style):
+    """matplotlib 차트를 story에 추가"""
     try:
         if fig is None:
-            return None
+            story.append(Paragraph(f"{title}: 차트 데이터가 없습니다.", body_style))
+            return
             
-        axes = fig.get_axes()
-        if not axes:
-            return None
-            
-        ax = axes[0]  # 첫 번째 축 사용
+        img_buffer = io.BytesIO()
+        fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
+        plt.close(fig)
+        img_buffer.seek(0)
         
-        # 막대 차트인 경우
-        bars = ax.patches
-        if bars:
-            labels = []
-            values = []
-            for i, bar in enumerate(bars):
-                height = bar.get_height()
-                if height != 0:  # 0이 아닌 막대만
-                    # x축 레이블 가져오기
-                    if hasattr(ax, 'get_xticklabels') and ax.get_xticklabels():
-                        if i < len(ax.get_xticklabels()):
-                            labels.append(ax.get_xticklabels()[i].get_text())
-                        else:
-                            labels.append(f"항목{i+1}")
-                    else:
-                        labels.append(f"항목{i+1}")
-                    values.append(height)
-            
-            if labels and values:
-                return pd.DataFrame({'구분': labels, '수치': values})
-        
-        # 선 그래프인 경우  
-        lines = ax.get_lines()
-        if lines:
-            line = lines[0]  # 첫 번째 라인
-            xdata = line.get_xdata()
-            ydata = line.get_ydata()
-            
-            if len(xdata) == len(ydata) and len(xdata) > 0:
-                # x축 레이블이 있으면 사용, 없으면 인덱스 사용
-                if hasattr(ax, 'get_xticklabels') and ax.get_xticklabels():
-                    xlabels = [label.get_text() for label in ax.get_xticklabels()]
-                    if len(xlabels) >= len(xdata):
-                        xlabels = xlabels[:len(xdata)]
-                    else:
-                        xlabels = [f"점{i+1}" for i in range(len(xdata))]
-                else:
-                    xlabels = [f"점{i+1}" for i in range(len(xdata))]
-                
-                return pd.DataFrame({'구분': xlabels, '수치': ydata})
-        
-        return None
-        
-    except Exception as e:
-        print(f"차트 데이터 추출 실패: {e}")
-        return None
-
-
-def add_chart_to_story(story, fig, title, body_style):
-    """matplotlib 차트를 story에 추가 - 실패시 데이터 테이블로 대체"""
-    try:
         story.append(Paragraph(title, body_style))
         story.append(Spacer(1, 6))
-        
-        if fig is None:
-            story.append(Paragraph("⚠️ 차트 데이터가 없습니다.", body_style))
-            story.append(Spacer(1, 12))
-            return
-        
-        # 방법 1: matplotlib 이미지로 시도
-        try:
-            import tempfile
-            import os
-            
-            # 임시 파일로 저장
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                fig.savefig(tmp.name, format='png', bbox_inches='tight', dpi=150)
-                tmp_path = tmp.name
-            
-            plt.close(fig)
-            
-            # 파일이 제대로 생성되었는지 확인
-            if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                img = RLImage(tmp_path, width=480, height=320)
-                story.append(img)
-                story.append(Spacer(1, 12))
-                
-                # 임시 파일 삭제
-                try:
-                    os.unlink(tmp_path)
-                except:
-                    pass
-                
-                print(f"✅ 차트 성공: {title}")
-                return
-            else:
-                raise Exception("이미지 파일이 비어있음")
-                
-        except Exception as e:
-            print(f"⚠️ matplotlib 실패: {e}")
-            
-            # 방법 2: BytesIO로 시도
-            try:
-                img_buffer = io.BytesIO()
-                fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=100)
-                plt.close(fig)
-                img_buffer.seek(0)
-                
-                if img_buffer.getvalue():
-                    img = RLImage(img_buffer, width=480, height=320)
-                    story.append(img)
-                    story.append(Spacer(1, 12))
-                    print(f"✅ 차트 성공 (BytesIO): {title}")
-                    return
-                else:
-                    raise Exception("BytesIO가 비어있음")
-                    
-            except Exception as e2:
-                print(f"⚠️ BytesIO도 실패: {e2}")
-                
-                # 방법 3: 차트 데이터를 ASCII 테이블로 변환
-                try:
-                    chart_data = extract_chart_data(fig)
-                    plt.close(fig)  # 차트 닫기
-                    
-                    if chart_data is not None and not chart_data.empty:
-                        story.append(Paragraph("📊 차트 데이터 (이미지 생성 실패로 표로 대체):", body_style))
-                        story.append(Spacer(1, 4))
-                        
-                        tbl = create_simple_table(chart_data, register_fonts_safe(), '#F0F0F0')
-                        if tbl:
-                            story.append(tbl)
-                            story.append(Spacer(1, 12))
-                            print(f"✅ 차트 데이터 테이블로 대체: {title}")
-                            return
-                    
-                    # 최후 수단: 단순 텍스트
-                    story.append(Paragraph("❌ 차트 생성 및 데이터 추출 모두 실패", body_style))
-                    story.append(Paragraph("• 차트가 정상적으로 표시되지 않을 수 있습니다.", body_style))
-                    story.append(Spacer(1, 12))
-                    print(f"❌ 차트 완전 실패: {title}")
-                    
-                except Exception as e3:
-                    print(f"❌ 데이터 테이블 변환도 실패: {e3}")
-                    story.append(Paragraph("❌ 차트 및 데이터 표시 불가", body_style))
-                    story.append(Spacer(1, 12))
-                    
+        img = RLImage(img_buffer, width=480, height=320)
+        story.append(img)
+        story.append(Spacer(1, 12))
     except Exception as e:
-        print(f"❌ 차트 추가 함수 전체 실패: {e}")
-        story.append(Paragraph(f"❌ {title}: 오류 발생", body_style))
+        story.append(Paragraph(f"{title}: 차트 생성 실패 ({e})", body_style))
         story.append(Spacer(1, 12))
 
 
