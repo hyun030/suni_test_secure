@@ -100,6 +100,29 @@ def sort_quarterly_by_quarter(df: pd.DataFrame) -> pd.DataFrame:
         # 정렬 실패 시 원본 반환
         pass
     return out
+    
+#헬퍼 함수 추가 (util 함수 근처로 추가하기) 
+def resolve_raw_cols_for_gap(df: pd.DataFrame) -> list:
+    """
+    갭 분석에 사용할 컬럼 목록을 반환.
+    1순위: *_원시값 컬럼
+    2순위: 세션의 selected_companies 중 df에 존재하는 회사명 컬럼
+    3순위: df 전체에서 '구분'과 *_원시값 제외한 회사명 컬럼
+    """
+    # 1) *_원시값 우선
+    raw_cols = [c for c in df.columns if c.endswith('_원시값')]
+    if len(raw_cols) >= 2:
+        return raw_cols
+
+    # 2) 선택한 회사 중 존재하는 컬럼
+    preferred = st.session_state.get('selected_companies') or []
+    cols = [c for c in preferred if c in df.columns and c != '구분']
+    if len(cols) >= 2:
+        return cols
+
+    # 3) 남아있는 회사명 컬럼 자동 선택
+    cols = [c for c in df.columns if c != '구분' and not c.endswith('_원시값')]
+    return cols
 
 def render_financial_analysis_tab():
     """재무분석 탭 렌더링"""
@@ -116,6 +139,8 @@ def render_financial_analysis_tab():
         config.COMPANIES_LIST, 
         default=config.DEFAULT_SELECTED_COMPANIES
     )
+    # ✅ 선택한 회사를 세션에 저장 (폴백 로직에서 씀)
+    st.session_state.selected_companies = selected_companies
     analysis_year = st.selectbox("분석 연도", ["2024", "2023", "2022"])
     
     # 분기별 데이터 수집 옵션
@@ -320,21 +345,21 @@ def render_financial_results():
     # 갭차이 분석 (완전한 버전)
     st.markdown("---")
     st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
-    raw_cols = [col for col in final_df.columns if col.endswith('_원시값')]
-    if raw_cols and len(raw_cols) > 1:
+    # ✅ 폴백 포함: *_원시값 부족하면 회사명 컬럼 사용
+    raw_cols = resolve_raw_cols_for_gap(final_df)
+    
+    if len(raw_cols) >= 2:
         gap_analysis = create_gap_analysis(final_df, raw_cols)
+    
         if not gap_analysis.empty:
             st.markdown("**📊 SK에너지 대비 경쟁사 비교 분석표**")
             st.dataframe(
                 gap_analysis, 
                 use_container_width=True,
-                column_config={
-                    "지표": st.column_config.TextColumn("지표", width="medium")
-                },
+                column_config={"지표": st.column_config.TextColumn("지표", width="medium")},
                 hide_index=False
             )
-            
-            # 갭차이 시각화 (개선된 차트)
+    
             if PLOTLY_AVAILABLE:
                 st.markdown("**📈 갭차이 시각화 차트**")
                 gap_chart = create_gap_chart(gap_analysis)
@@ -343,10 +368,12 @@ def render_financial_results():
                 else:
                     st.info("📊 갭차이 차트를 생성할 수 있는 데이터가 부족합니다.")
         else:
-            st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
+            st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
     else:
         st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
-
+        # 디버깅 도움이 필요하면 주석 해제
+        # st.caption(f"현재 사용 가능한 컬럼: {list(final_df.columns)}")
+    
     # AI 인사이트 표시
     if SessionManager.is_data_available('financial_insight'):
         st.markdown("---")
