@@ -317,7 +317,8 @@ def create_gap_chart(gap_analysis_df: pd.DataFrame):
         return None
 
     import plotly.express as px
-
+    
+    # _갭(pp) 컬럼 찾기
     gap_cols = [c for c in gap_analysis_df.columns if c.endswith('_갭(pp)')]
     if not gap_cols:
         return None
