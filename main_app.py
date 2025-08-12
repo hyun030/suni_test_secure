@@ -494,7 +494,7 @@ def main():
     # 세션 상태 초기화
     SessionManager.initialize()
     
-    st.title("⚡ SK에너지 경쟁사 분석 대시보드")
+    st.title("⚡SK Profit+: 손익 개선 전략 대시보드")
     
     # 마지막 분석 시간 표시
     if st.session_state.last_analysis_time:
