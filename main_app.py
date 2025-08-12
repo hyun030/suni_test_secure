@@ -27,7 +27,7 @@ class SessionManager:
         # 핵심 데이터 변수들
         core_vars = [
             'financial_data', 'quarterly_data',
-            'financial_insight', 'integrated_insight', 'integrated_insight',
+            'financial_insight', 'integrated_insight',
             'selected_companies', 'manual_financial_data',
             'google_news_data', 'google_news_insight'
         ]
