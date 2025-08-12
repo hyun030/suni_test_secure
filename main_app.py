@@ -274,8 +274,8 @@ def render_financial_results():
     raw_cols = [col for col in final_df.columns if col.endswith('_원시값')]
     
     if not ratio_df.empty and raw_cols:
-    chart_df = pd.melt(ratio_df, id_vars=['구분'], value_vars=raw_cols, var_name='회사', value_name='수치')
-    chart_df['회사'] = chart_df['회사'].str.replace('_원시값', '')
+        chart_df = pd.melt(ratio_df, id_vars=['구분'], value_vars=raw_cols, var_name='회사', value_name='수치')
+        chart_df['회사'] = chart_df['회사'].str.replace('_원시값', '')
     
         if PLOTLY_AVAILABLE:
             # 갭차이 분석 차트로 개선
