@@ -573,6 +573,39 @@ def render_report_generation_tab():
             quarterly_df = st.session_state.get("quarterly_data")
             selected_charts = st.session_state.get("selected_charts")
 
+def render_report_generation_tab():
+    """보고서 생성 탭 렌더링 - 수정된 버전"""
+    st.subheader("📄 통합 보고서 생성 & 이메일 서비스 바로가기")
+
+    # 2열 레이아웃: PDF 생성 + 이메일 입력
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.write("**📥 보고서 다운로드**")
+
+        # 사용자 입력
+        report_target = st.text_input("보고 대상", value="SK이노베이션 경영진")
+        report_author = st.text_input("보고자", value="")
+        show_footer = st.checkbox(
+            "푸터 문구 표시(※ 본 보고서는 대시보드에서 자동 생성되었습니다.)", 
+            value=False
+        )
+
+        # 보고서 형식 선택
+        report_format = st.radio("파일 형식 선택", ["PDF", "Excel"], horizontal=True)
+
+        if st.button("📥 보고서 생성", type="primary", key="make_report"):
+            # 데이터 우선순위: DART 자동 > 수동 업로드
+            financial_data_for_report = None
+            if SessionManager.is_data_available('financial_data'):
+                financial_data_for_report = st.session_state.financial_data
+            elif SessionManager.is_data_available('manual_financial_data'):
+                financial_data_for_report = st.session_state.manual_financial_data
+
+            # 선택적 입력
+            quarterly_df = st.session_state.get("quarterly_data")
+            selected_charts = st.session_state.get("selected_charts")
+
             with st.spinner("📄 보고서 생성 중..."):
                 try:
                     if report_format == "PDF":
@@ -622,10 +655,53 @@ def render_report_generation_tab():
                 except Exception as e:
                     st.error(f"보고서 생성 중 오류가 발생했습니다: {str(e)}")
 
+    # 🔧 수정: with col2 블록을 올바르게 처리
     with col2:
-        create_email_ui()
+        st.write("**📧 이메일 서비스 바로가기**")
+
+        mail_providers = {
+            "네이버": "https://mail.naver.com/",
+            "구글(Gmail)": "https://mail.google.com/",
+            "다음": "https://mail.daum.net/",
+            "네이트": "https://mail.nate.com/",
+            "야후": "https://mail.yahoo.com/",
+            "아웃룩(Outlook)": "https://outlook.live.com/",
+            "프로톤메일(ProtonMail)": "https://mail.proton.me/",
+            "조호메일(Zoho Mail)": "https://mail.zoho.com/",
+            "GMX 메일": "https://www.gmx.com/",
+            "아이클라우드(iCloud Mail)": "https://www.icloud.com/mail",
+            "메일닷컴(Mail.com)": "https://www.mail.com/",
+            "AOL 메일": "https://mail.aol.com/"
+        }
+
+        selected_provider = st.selectbox(
+            "메일 서비스 선택",
+            list(mail_providers.keys()),
+            key="mail_provider_select"
+        )
+        url = mail_providers[selected_provider]
+
+        st.markdown(
+            f"[{selected_provider} 메일 바로가기]({url})",
+            unsafe_allow_html=True
+        )
+        st.info("선택한 메일 서비스 링크가 새 탭에서 열립니다.")
+
+        # 생성된 파일 다운로드 버튼
+        if st.session_state.get('generated_file'):
+            st.download_button(
+                label=f"📥 {st.session_state.generated_filename} 다운로드",
+                data=st.session_state.generated_file,
+                file_name=st.session_state.generated_filename,
+                mime=st.session_state.generated_mime,
+                key="download_generated_report_btn"
+            )
+        else:
+            st.info("먼저 보고서를 생성해주세요.")
+
 
 def main():
+    """메인 함수 - 수정된 버전"""
     # 세션 상태 초기화
     SessionManager.initialize()
     
@@ -635,11 +711,16 @@ def main():
     if st.session_state.last_analysis_time:
         st.info(f"🕒 마지막 분석 시간: {st.session_state.last_analysis_time}")
     
+    # 탭 생성
     tabs = st.tabs([
-        "📈 재무분석", "📁 수동 파일 업로드", 
-        "🔍 뉴스 분석", "🧠 통합 인사이트", "📄 보고서 생성"
+        "📈 재무분석", 
+        "📁 수동 파일 업로드", 
+        "🔍 뉴스 분석", 
+        "🧠 통합 인사이트", 
+        "📄 보고서 생성"
     ])
     
+    # 각 탭 렌더링
     with tabs[0]:  # 재무분석 탭
         render_financial_analysis_tab()
     
@@ -654,6 +735,7 @@ def main():
     
     with tabs[4]:  # 보고서 생성 탭
         render_report_generation_tab()
+
 
 if __name__ == "__main__":
     main()
