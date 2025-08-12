@@ -3,10 +3,27 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import json
-
 import config
 from data.loader import DartAPICollector, QuarterlyDataCollector, SKNewsCollector
-from data.preprocess import SKFinancialDataProcessor, FinancialDataProcessor 
+
+# 안전한 임포트 (try-except 적용)
+try:
+    from data.preprocess import SKFinancialDataProcessor, FinancialDataProcessor 
+except ImportError as e:
+    print(f"⚠️ 전처리 모듈 로드 실패: {e}")
+    # 대체 클래스 생성
+    class SKFinancialDataProcessor:
+        def __init__(self):
+            pass
+        def process_data(self, df):
+            return df if df is not None else pd.DataFrame()
+    
+    class FinancialDataProcessor:
+        def __init__(self):
+            pass
+        def process_data(self, df):
+            return df if df is not None else pd.DataFrame()
+
 from insight.openai_api import OpenAIInsightGenerator
 from visualization import (
     create_sk_bar_chart, create_sk_radar_chart, 
