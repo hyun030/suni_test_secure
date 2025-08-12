@@ -686,8 +686,6 @@ def render_report_generation_tab():
                                    st.session_state.get('financial_insight') or 
                                    st.session_state.get('news_insight') or
                                    st.session_state.get('google_news_insight'),
-                            quarterly_df=quarterly_df,
-                            selected_charts=selected_charts,
                             show_footer=show_footer,
                             report_target=report_target.strip() or "보고 대상 미기재",
                             report_author=report_author.strip() or "보고자 미기재"
