@@ -12,15 +12,16 @@ from visualization import (
     create_quarterly_trend_chart, create_gap_trend_chart, 
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
+# export 모듈 안전한 import (수정)
 try:
     from util.export import create_excel_report, create_enhanced_pdf_report
 except ImportError:
     # import 실패 시 대체 함수들 생성
     def create_excel_report(*args, **kwargs):
-        return b"Excel 생성 기능이 준비 중입니다."
+        return b"Excel report generation is in progress."
     
     def create_enhanced_pdf_report(*args, **kwargs):
-        return b"PDF 생성 기능이 준비 중입니다."
+        return b"PDF report generation is in progress."
 from util.email_util import create_email_ui
 from news_collector import create_google_news_tab, GoogleNewsCollector
 
