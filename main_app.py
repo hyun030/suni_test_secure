@@ -13,6 +13,7 @@ from visualization import (
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
 # export 모듈 안전한 import (수정)
+# 밑에 export 부분 파일이 util 안에 없다고 자꾸 오류나는데 일단 앱 실행 되게 하는 대체 방안으로 해둠 try-except문
 try:
     from util.export import create_excel_report, create_enhanced_pdf_report
 except ImportError:
