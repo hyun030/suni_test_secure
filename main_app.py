@@ -12,7 +12,7 @@ from visualization import (
     create_quarterly_trend_chart, create_gap_trend_chart, 
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
-from util.export import create_excel_report, create_structured_pdf_report as create_structured_pdf_report
+from util.export import create_excel_report, create_enhanced_pdf_report_final as create_enhanced_pdf_report
 from util.email_util import create_email_ui
 from news_collector import create_google_news_tab, GoogleNewsCollector
 
