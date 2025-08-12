@@ -323,6 +323,11 @@ def render_financial_results():
     raw_cols = [col for col in final_df.columns if col.endswith('_원시값')]
     if raw_cols and len(raw_cols) > 1:
         gap_analysis = create_gap_analysis(final_df, raw_cols)
+        
+        # 디버그 정보 추가
+        st.write("🔍 디버그: 갭차이 분석 결과 컬럼들:", list(gap_analysis.columns))
+        st.write("🔍 디버그: 갭차이 분석 결과 데이터:", gap_analysis)
+        
         if not gap_analysis.empty:
             st.markdown("**📊 SK에너지 대비 경쟁사 비교 분석표**")
             st.dataframe(
@@ -334,10 +339,14 @@ def render_financial_results():
                 hide_index=False
             )
             
-            # 갭차이 시각화
+            # 갭차이 시각화 (개선된 차트)
             if PLOTLY_AVAILABLE:
-                st.markdown("**📈 차이 시각화 차트**")
-                st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="gap_chart")
+                st.markdown("**📈 갭차이 시각화 차트**")
+                gap_chart = create_gap_chart(gap_analysis)
+                if gap_chart is not None:
+                    st.plotly_chart(gap_chart, use_container_width=True, key="gap_chart")
+                else:
+                    st.info("📊 갭차이 차트를 생성할 수 있는 데이터가 부족합니다.")
         else:
             st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
     else:
