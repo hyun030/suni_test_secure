@@ -25,7 +25,7 @@ except ImportError:
 from util.email_util import create_email_ui
 from news_collector import create_google_news_tab, GoogleNewsCollector
 
-st.set_page_config(page_title="SK에너지 경쟁사 분석 대시보드", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="SK Profit+: 손익 개선 전략 대시보드", page_icon="⚡", layout="wide")
 
 class SessionManager:
     """세션 상태 관리를 담당하는 클래스"""
