@@ -279,7 +279,7 @@ def render_financial_results():
     
         if PLOTLY_AVAILABLE:
             st.plotly_chart(create_sk_bar_chart(chart_df), use_container_width=True, key="bar_chart")
-            # 원형 차트 제거 (갭차이 분석 차트로 대체)
+            st.plotly_chart(create_sk_radar_chart(chart_df), use_container_width=True, key="radar_chart")
 
     # 분기별 트렌드 차트 추가
     if SessionManager.is_data_available('quarterly_data'):
@@ -323,7 +323,6 @@ def render_financial_results():
     raw_cols = [col for col in final_df.columns if col.endswith('_원시값')]
     if raw_cols and len(raw_cols) > 1:
         gap_analysis = create_gap_analysis(final_df, raw_cols)
-        
         if not gap_analysis.empty:
             st.markdown("**📊 SK에너지 대비 경쟁사 비교 분석표**")
             st.dataframe(
@@ -335,7 +334,7 @@ def render_financial_results():
                 hide_index=False
             )
             
-            # 갭차이 시각화 차트
+            # 갭차이 시각화 (개선된 차트)
             if PLOTLY_AVAILABLE:
                 st.markdown("**📈 갭차이 시각화 차트**")
                 gap_chart = create_gap_chart(gap_analysis)
@@ -387,10 +386,11 @@ def render_manual_upload_tab():
                         SessionManager.save_data('manual_financial_data', manual_data)
                         SessionManager.save_data('financial_data', manual_data)
 
-                        # AI 인사이트 생성
-                        openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
-                        manual_financial_insight = openai.generate_financial_insight(manual_data)
-                        SessionManager.save_data('manual_financial_insight', manual_financial_insight, 'manual_financial_insight')
+                        # AI 인사이트 생성 (DART 자동 수집과 동일한 프롬프트 사용)
+                        with st.spinner("🤖 AI 인사이트 생성 중..."):
+                            openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
+                            manual_financial_insight = openai.generate_financial_insight(manual_data)
+                            SessionManager.save_data('manual_financial_insight', manual_financial_insight, 'manual_financial_insight')
         
                         st.success("✅ 수동 업로드 분석 및 AI 인사이트 생성이 완료되었습니다!")
                     else:
@@ -420,15 +420,15 @@ def render_manual_upload_tab():
             chart_df['회사'] = chart_df['회사'].str.replace('_원시값', '')
             
             st.plotly_chart(create_sk_bar_chart(chart_df), use_container_width=True, key="manual_bar_chart")
-            st.plotly_chart(create_sk_radar_chart(chart_df), use_container_width=True, key="manual_radar_chart")
+            # 원형 차트 제거 (갭차이 분석 차트로 대체)
 
         # 갭차이 분석 추가
         st.markdown("---")
-        st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
+        st.subheader("📈 격차 분석")
         if raw_cols and len(raw_cols) > 1:
             gap_analysis = create_gap_analysis(final_df, raw_cols)
             if not gap_analysis.empty:
-                st.markdown("**📊 SK에너지 대비 경쟁사 비교 분석표**")
+                st.markdown("**📊 SK에너지 대비 경쟁사 차이 분석표**")
                 st.dataframe(
                     gap_analysis, 
                     use_container_width=True,
@@ -446,6 +446,12 @@ def render_manual_upload_tab():
                 st.warning("⚠️ 차이 분석을 위한 충분한 데이터가 없습니다. (최소 2개 회사 필요)")
         else:
             st.info("ℹ️ 차이 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
+
+        # AI 인사이트 표시 (수동 업로드용)
+        if SessionManager.is_data_available('manual_financial_insight'):
+            st.markdown("---")
+            st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
+            st.markdown(st.session_state.manual_financial_insight)
 
 def render_integrated_insight_tab():
     """통합 인사이트 탭 렌더링"""
