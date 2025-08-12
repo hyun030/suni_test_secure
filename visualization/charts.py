@@ -354,7 +354,7 @@ def create_gap_chart(gap_analysis_df: pd.DataFrame):
         chart_df, x='지표', y='갭(퍼센트포인트)', color='회사',
         text='갭(퍼센트포인트)', color_discrete_map=color_map,
         barmode='group', height=500,
-        title="📈 갭차이 시각화 차트"
+        title=""
     )
     fig.update_traces(texttemplate='%{text:.1f}pp', textposition='outside', cliponaxis=False)
     fig.add_hline(y=0, line_dash='dash', line_color='red',
