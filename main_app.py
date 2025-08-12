@@ -12,7 +12,7 @@ from visualization import (
     create_quarterly_trend_chart, create_gap_trend_chart, 
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
-from util.export import create_excel_report, create_structured_pdf_report
+from util.export import create_excel_report, create_structured_pdf_report as create_structured_pdf_report
 from util.email_util import create_email_ui
 from news_collector import create_google_news_tab, GoogleNewsCollector
 
@@ -125,7 +125,8 @@ def render_financial_analysis_tab():
             default=["2024"], 
             help="분기별 데이터를 수집할 연도를 선택하세요"
         )
-        st.info("📋 수집할 보고서: 1분기보고서 (Q1) • 반기보고서 (Q2) • 3분기보고서 (Q3) • 사업보고서 (Q4)")
+       st.info("📋 수집할 보고서: 1분기보고서(Q1, 누적) • 반기보고서(Q2, 누적) • 3분기보고서(Q3, 누적) • 사업보고서(연간, 누적)\n"
+        "🔎 Q4(4분기 당기)는 연간 − (Q1+Q2+Q3)로 산출됩니다.")
 
     if st.button("🚀 DART 자동분석 시작", type="primary"):
         with st.spinner("모든 데이터를 수집하고 심층 분석 중입니다..."):
