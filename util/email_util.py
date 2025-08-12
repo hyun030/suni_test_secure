@@ -14,7 +14,7 @@ def create_email_ui():
     url = config.MAIL_PROVIDERS[selected_provider]
 
     st.markdown(
-        f'<a href="{url}" target="_blank" style="background-color: #E31E24; color: white; padding: 12px 24px; text-align: center; text-decoration: none; display: inline-block; border-radius: 4px; width: 100%;">{selected_provider} 메일 열기</a>',
+        f'<a href="{url}" target="_blank" style="background-color: #E31E24; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px;">{selected_provider} 메일 열기</a>',
         unsafe_allow_html=True
     )
     st.info("선택한 메일 서비스가 새 탭에서 열립니다. 생성된 보고서를 다운로드하여 직접 첨부해주세요.")
