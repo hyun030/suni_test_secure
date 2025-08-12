@@ -2,254 +2,20 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import json
-import os
-import sys
 
-# 경로 설정 추가 (Import 오류 해결)
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, current_dir)
+import config
+from data.loader import DartAPICollector, QuarterlyDataCollector
+from data.preprocess import SKFinancialDataProcessor, FinancialDataProcessor 
+from insight.openai_api import OpenAIInsightGenerator
+from visualization.charts import (
+    create_sk_bar_chart, create_sk_radar_chart, 
+    create_quarterly_trend_chart, create_gap_trend_chart, 
+    create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
+)
+from util.export import create_excel_report, create_structured_pdf_report
+from util.email_util import create_email_ui
+from news_collector import create_google_news_tab, GoogleNewsCollector
 
-print("📦 모듈 로딩 시작...")
-
-# 1. Config 모듈 안전 import
-try:
-    import config
-    print("✅ config 모듈 로드 성공")
-except ImportError:
-    print("⚠️ config 모듈 없음, 기본값 사용")
-    class config:
-        DART_API_KEY = "your_dart_api_key"
-        OPENAI_API_KEY = "your_openai_api_key"
-        COMPANIES_LIST = ["SK에너지", "S-Oil", "GS칼텍스", "HD현대오일뱅크"]
-        DEFAULT_SELECTED_COMPANIES = ["SK에너지", "S-Oil"]
-        BENCHMARKING_KEYWORDS = ["SK에너지", "정유", "석유화학"]
-
-# 2. Data Loader 모듈 안전 import
-try:
-    from data.loader import DartAPICollector, QuarterlyDataCollector
-    print("✅ data.loader 모듈 로드 성공")
-    DATA_LOADER_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ data.loader 모듈 없음: {e}")
-    DATA_LOADER_AVAILABLE = False
-    
-    # 대체 클래스 생성
-    class DartAPICollector:
-        def __init__(self, api_key=None):
-            self.api_key = api_key
-        
-        def get_company_financials_auto(self, company, year):
-            # 샘플 데이터 반환
-            return pd.DataFrame({
-                '항목': ['매출액', '영업이익', '당기순이익'],
-                '값': [1000000, 50000, 30000]
-            })
-    
-    class QuarterlyDataCollector:
-        def __init__(self, dart_collector):
-            self.dart = dart_collector
-        
-        def collect_quarterly_data(self, company, year):
-            # 샘플 분기별 데이터 반환
-            return pd.DataFrame({
-                '회사': [company] * 4,
-                '분기': [f'{year}Q1', f'{year}Q2', f'{year}Q3', f'{year}Q4'],
-                '매출액': [250000, 260000, 270000, 280000],
-                '영업이익': [12000, 13000, 14000, 15000]
-            })
-
-# 3. Data Preprocess 모듈 안전 import
-try:
-    from data.preprocess import SKFinancialDataProcessor, FinancialDataProcessor 
-    print("✅ data.preprocess 모듈 로드 성공")
-except ImportError as e:
-    print(f"⚠️ 전처리 모듈 로드 실패: {e}")
-    
-    # 대체 클래스 생성
-    class SKFinancialDataProcessor:
-        def __init__(self):
-            pass
-        
-        def process_dart_data(self, df, company):
-            if df is None or df.empty:
-                return None
-            # 기본 처리
-            return df
-        
-        def merge_company_data(self, dataframes):
-            if not dataframes:
-                return pd.DataFrame()
-            
-            # 샘플 병합 데이터 생성
-            return pd.DataFrame({
-                '구분': ['매출액(조원)', '영업이익률(%)', 'ROE(%)', 'ROA(%)'],
-                'SK에너지': [15.2, 5.6, 12.3, 8.1],
-                'S-Oil': [14.8, 5.3, 11.8, 7.8],
-                'GS칼텍스': [13.5, 4.6, 10.5, 7.2],
-                'HD현대오일뱅크': [11.2, 4.3, 9.2, 6.5]
-            })
-    
-    class FinancialDataProcessor:
-        def __init__(self):
-            pass
-        
-        def load_file(self, uploaded_file):
-            # 기본 파일 로드 처리
-            return pd.DataFrame({'message': ['파일 처리 기능이 제한됩니다']})
-        
-        def process_data(self, df):
-            return df if df is not None else pd.DataFrame()
-        
-        def merge_company_data(self, dataframes):
-            if not dataframes:
-                return pd.DataFrame()
-            return pd.concat(dataframes, ignore_index=True)
-
-# 4. OpenAI API 모듈 안전 import
-try:
-    from insight.openai_api import OpenAIInsightGenerator
-    print("✅ insight.openai_api 모듈 로드 성공")
-    OPENAI_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ OpenAI 모듈 없음: {e}")
-    OPENAI_AVAILABLE = False
-    
-    class OpenAIInsightGenerator:
-        def __init__(self, api_key=None):
-            self.api_key = api_key
-        
-        def generate_financial_insight(self, financial_data):
-            return """# AI 재무 인사이트 (샘플)
-            
-## 주요 분석 결과
-* SK에너지는 매출액 및 수익성 지표에서 경쟁사 대비 우위를 보이고 있습니다.
-* 영업이익률 5.6%는 업계 평균을 상회하는 수준입니다.
-* ROE 12.3%로 양호한 자본 효율성을 시현하고 있습니다.
-
-## 개선 권고사항
-- 운영 효율성 제고를 통한 마진 개선
-- 신사업 진출을 통한 성장 동력 확보
-- ESG 경영 강화를 통한 지속가능성 제고
-            """
-        
-        def generate_integrated_insight(self, combined_insights, additional_data):
-            return """# 통합 인사이트 (샘플)
-            
-## 종합 분석 결과
-SK에너지는 재무적으로 견고한 성과를 유지하고 있으나, 장기적 성장을 위한 전략적 전환이 필요합니다.
-
-## 핵심 전략 방향
-1. **단기**: 운영 효율성 극대화
-2. **중기**: 신사업 포트폴리오 확대  
-3. **장기**: 에너지 전환 대응 및 ESG 경영 강화
-
-## 실행 과제
-- 정유 사업 경쟁력 강화
-- 친환경 에너지 사업 진출
-- 디지털 혁신 가속화
-            """
-
-# 5. Visualization 모듈 안전 import
-try:
-    from visualization import (
-        create_sk_bar_chart, create_sk_radar_chart, 
-        create_quarterly_trend_chart, create_gap_trend_chart, 
-        create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
-    )
-    print("✅ visualization 모듈 로드 성공")
-except ImportError as e:
-    print(f"⚠️ visualization 모듈 없음: {e}")
-    PLOTLY_AVAILABLE = False
-    
-    def create_sk_bar_chart(df):
-        return None
-    def create_sk_radar_chart(df):
-        return None
-    def create_quarterly_trend_chart(df):
-        return None
-    def create_gap_trend_chart(df):
-        return None
-    def create_gap_analysis(df, cols):
-        return pd.DataFrame()
-    def create_gap_chart(df):
-        return None
-
-# 6. 보고서 모듈 직접 import (우리가 만든 것만 사용)
-try:
-    from reports.report_generator import create_enhanced_pdf_report, create_excel_report
-    print("✅ reports.report_generator 모듈 로드 성공")
-    EXPORT_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ reports.report_generator 모듈 없음: {e}")
-    EXPORT_AVAILABLE = False
-    
-    # 기본 함수 생성
-    def create_enhanced_pdf_report(*args, **kwargs):
-        return "PDF generation not available".encode('utf-8')
-    
-    def create_excel_report(*args, **kwargs):
-        return "Excel generation not available".encode('utf-8')
-
-# 7. News Collector 모듈 안전 import
-try:
-    from news_collector import create_google_news_tab, GoogleNewsCollector
-    print("✅ news_collector 모듈 로드 성공")
-    NEWS_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ news_collector 모듈 없음: {e}")
-    NEWS_AVAILABLE = False
-    
-    def create_google_news_tab():
-        st.subheader("🔍 Google News 수집")
-        st.warning("⚠️ 뉴스 수집 모듈이 없습니다. 기본 샘플 데이터를 사용합니다.")
-        
-        if st.button("샘플 뉴스 데이터 생성"):
-            sample_news = pd.DataFrame({
-                '제목': [
-                    'SK에너지, 3분기 실적 시장 기대치 상회',
-                    '정유업계, 원유가 하락으로 마진 개선 기대',
-                    'SK이노베이션, 배터리 사업 분할 추진',
-                    '에너지 전환 정책, 정유업계 영향 분석'
-                ],
-                '날짜': ['2024-11-01', '2024-10-28', '2024-10-25', '2024-10-22'],
-                '출처': ['매일경제', '한국경제', '조선일보', '이데일리']
-            })
-            
-            SessionManager.save_data('google_news_data', sample_news)
-            
-            sample_insight = """# 뉴스 분석 인사이트 (샘플)
-            
-## 주요 동향
-* 3분기 실적 호조로 시장 신뢰도 상승
-* 원유가 안정화로 정유 마진 개선 환경 조성
-* 에너지 전환 정책 대응 필요성 증대
-
-## 전략적 시사점
-- 단기: 마진 개선 기회 활용
-- 중기: 에너지 전환 대응 전략 수립
-- 장기: 지속가능 사업 모델 구축
-            """
-            
-            SessionManager.save_data('google_news_insight', sample_insight)
-            st.success("✅ 샘플 뉴스 데이터 및 인사이트 생성 완료!")
-        
-        # 뉴스 데이터 표시
-        if SessionManager.is_data_available('google_news_data'):
-            st.subheader("📰 수집된 뉴스")
-            st.dataframe(st.session_state.google_news_data, use_container_width=True)
-            
-            if SessionManager.is_data_available('google_news_insight'):
-                st.subheader("🤖 뉴스 AI 인사이트")
-                st.markdown(st.session_state.google_news_insight)
-    
-    class GoogleNewsCollector:
-        def __init__(self):
-            pass
-
-print("✅ 모든 모듈 로딩 완료")
-
-# Streamlit 페이지 설정
 st.set_page_config(page_title="SK에너지 경쟁사 분석 대시보드", page_icon="⚡", layout="wide")
 
 class SessionManager:
@@ -328,10 +94,6 @@ def sort_quarterly_by_quarter(df: pd.DataFrame) -> pd.DataFrame:
 def render_financial_analysis_tab():
     """재무분석 탭 렌더링"""
     st.subheader("📈 DART 공시 데이터 심층 분석")
-    
-    # 모듈 상태 경고
-    if not DATA_LOADER_AVAILABLE:
-        st.warning("⚠️ DART API 모듈이 없습니다. 샘플 데이터를 사용합니다.")
     
     # 분석 상태 표시
     if SessionManager.is_data_available('financial_data'):
@@ -679,13 +441,15 @@ def render_report_generation_tab():
             with st.spinner("📄 보고서 생성 중..."):
                 try:
                     if report_format == "PDF":
-                        file_bytes = create_enhanced_pdf_report(
+                        file_bytes = create_structured_pdf_report(
                             financial_data=financial_data_for_report,
                             news_data=st.session_state.get('google_news_data'),
                             insights=st.session_state.get('integrated_insight') or 
                                    st.session_state.get('financial_insight') or 
-                                   st.session_state.get('news_insight') or
+                                   st.session_state.get('manual_financial_insight') or
                                    st.session_state.get('google_news_insight'),
+                            quarterly_df=quarterly_df,
+                            selected_charts=selected_charts,
                             show_footer=show_footer,
                             report_target=report_target.strip() or "보고 대상 미기재",
                             report_author=report_author.strip() or "보고자 미기재"
@@ -724,84 +488,21 @@ def render_report_generation_tab():
                     st.error(f"보고서 생성 중 오류가 발생했습니다: {str(e)}")
 
     with col2:
-        st.write("**📧 이메일 서비스**")
-        
-        mail_providers = {
-            "네이버": "https://mail.naver.com/",
-            "구글(Gmail)": "https://mail.google.com/",
-            "다음": "https://mail.daum.net/",
-            "네이트": "https://mail.nate.com/",
-            "야후": "https://mail.yahoo.com/",
-            "아웃룩(Outlook)": "https://outlook.live.com/",
-            "프로톤메일(ProtonMail)": "https://mail.proton.me/",
-            "조호메일(Zoho Mail)": "https://mail.zoho.com/",
-            "GMX 메일": "https://www.gmx.com/",
-            "아이클라우드(iCloud Mail)": "https://www.icloud.com/mail",
-            "메일닷컴(Mail.com)": "https://www.mail.com/",
-            "AOL 메일": "https://mail.aol.com/"
-        }
-
-        selected_provider = st.selectbox(
-            "메일 서비스 선택",
-            list(mail_providers.keys()),
-            key="mail_provider_select"
-        )
-        url = mail_providers[selected_provider]
-
-        st.markdown(
-            f"[{selected_provider} 메일 바로가기]({url})",
-            unsafe_allow_html=True
-        )
-        st.info("선택한 메일 서비스 링크가 새 탭에서 열립니다.")
-
-        if st.session_state.get('generated_file'):
-            st.download_button(
-                label=f"📥 {st.session_state.generated_filename} 다운로드",
-                data=st.session_state.generated_file,
-                file_name=st.session_state.generated_filename,
-                mime=st.session_state.generated_mime,
-                key="download_generated_report_btn"
-            )
-        else:
-            st.info("먼저 보고서를 생성해주세요.")
+        create_email_ui()
 
 def main():
     # 세션 상태 초기화
     SessionManager.initialize()
     
-    st.title("⚡SK Profit+: 손익 개선 전략")
-    
-    # 모듈 로딩 상태 표시
-    with st.expander("📦 시스템 상태"):
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.write("**데이터 모듈**")
-            if DATA_LOADER_AVAILABLE:
-                st.success("✅ DART API")
-            else:
-                st.warning("⚠️ DART API (샘플 데이터 사용)")
-        
-        with col2:
-            st.write("**AI 모듈**")
-            if OPENAI_AVAILABLE:
-                st.success("✅ OpenAI")
-            else:
-                st.warning("⚠️ OpenAI (샘플 인사이트 사용)")
-        
-        with col3:
-            st.write("**시각화 모듈**")
-            if PLOTLY_AVAILABLE:
-                st.success("✅ Plotly")
-            else:
-                st.warning("⚠️ Plotly (차트 제한)")
+    st.title("⚡ SK에너지 경쟁사 분석 대시보드")
     
     # 마지막 분석 시간 표시
     if st.session_state.last_analysis_time:
         st.info(f"🕒 마지막 분석 시간: {st.session_state.last_analysis_time}")
     
     tabs = st.tabs([
-        "📈 재무분석", "📁 수동 파일 업로드", "🔍 Google News 수집", "🧠 통합 인사이트", "📄 보고서 생성"
+        "📈 재무분석", "📁 수동 파일 업로드", 
+        "🔍 Google News 수집", "🧠 통합 인사이트", "📄 보고서 생성"
     ])
     
     with tabs[0]:  # 재무분석 탭
