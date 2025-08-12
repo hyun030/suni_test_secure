@@ -279,7 +279,7 @@ def render_financial_results():
     
         if PLOTLY_AVAILABLE:
             st.plotly_chart(create_sk_bar_chart(chart_df), use_container_width=True, key="bar_chart")
-            st.plotly_chart(create_sk_radar_chart(chart_df), use_container_width=True, key="radar_chart")
+            # 원형 차트 제거 (갭차이 분석 차트로 대체)
 
     # 분기별 트렌드 차트 추가
     if SessionManager.is_data_available('quarterly_data'):
@@ -324,10 +324,6 @@ def render_financial_results():
     if raw_cols and len(raw_cols) > 1:
         gap_analysis = create_gap_analysis(final_df, raw_cols)
         
-        # 디버그 정보 추가
-        st.write("🔍 디버그: 갭차이 분석 결과 컬럼들:", list(gap_analysis.columns))
-        st.write("🔍 디버그: 갭차이 분석 결과 데이터:", gap_analysis)
-        
         if not gap_analysis.empty:
             st.markdown("**📊 SK에너지 대비 경쟁사 비교 분석표**")
             st.dataframe(
@@ -339,7 +335,7 @@ def render_financial_results():
                 hide_index=False
             )
             
-            # 갭차이 시각화 (개선된 차트)
+            # 갭차이 시각화 차트
             if PLOTLY_AVAILABLE:
                 st.markdown("**📈 갭차이 시각화 차트**")
                 gap_chart = create_gap_chart(gap_analysis)
