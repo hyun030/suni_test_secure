@@ -312,58 +312,38 @@ def create_gap_analysis(financial_df: pd.DataFrame, raw_cols: list):
     return pd.DataFrame(rows)
 
 def create_gap_chart(gap_analysis_df: pd.DataFrame):
-    """갭차이 시각화 차트"""
+    """갭차이 시각화 차트 (퍼센트포인트 차이)"""
     if not PLOTLY_AVAILABLE or gap_analysis_df.empty:
         return None
-    
-    # 갭% 컬럼만 추출
-    gap_cols = [col for col in gap_analysis_df.columns if col.endswith('_갭(%)')]
+
+    import plotly.express as px
+
+    gap_cols = [c for c in gap_analysis_df.columns if c.endswith('_갭(pp)')]
     if not gap_cols:
         return None
-    
-    # 데이터 준비
-    chart_data = []
-    for _, row in gap_analysis_df.iterrows():
-        indicator = row['지표']
+
+    # long 포맷으로 변환
+    chart_rows = []
+    for _, r in gap_analysis_df.iterrows():
+        metric = r['지표']
         for col in gap_cols:
-            company = col.replace('_갭(%)', '')
-            gap_value = row[col]
-            if gap_value is not None:  # None 값 제외
-                chart_data.append({
-                    '지표': indicator,
-                    '회사': company,
-                    '갭(pp)': gap_value
-                })
-    
-    chart_df = pd.DataFrame(chart_data)
-    
-    if chart_df.empty:
-        return None
-    
-    # 색상 매핑
-    companies = chart_df['회사'].unique()
+            comp = col.replace('_갭(pp)', '')
+            chart_rows.append({'지표': metric, '회사': comp, '갭(퍼센트포인트)': r[col]})
+
+    chart_df = pd.DataFrame(chart_rows)
+
+    companies = chart_df['회사'].dropna().unique()
     color_map = {comp: get_company_color(comp, companies) for comp in companies}
-    
+
     fig = px.bar(
-        chart_df, x='지표', y='갭(pp)', color='회사',
-        title="📊 SK에너지 대비 경쟁사 갭차이 분석 (퍼센트포인트)",
-        text='갭(pp)', color_discrete_map=color_map, barmode='group', height=500
+        chart_df, x='지표', y='갭(퍼센트포인트)', color='회사',
+        text='갭(퍼센트포인트)', color_discrete_map=color_map,
+        barmode='group', height=500,
+        title="📊 SK에너지 대비 경쟁사 갭차이 분석 (퍼센트포인트)"
     )
-    
-    fig.update_traces(texttemplate='%{text:.1f}pp', textposition='outside')
-    fig.update_layout(
-        yaxis_title="갭차이 (퍼센트포인트)", xaxis_title="재무 지표", legend_title="회사",
-        font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif"),
-        # 0선 추가
-        shapes=[dict(
-            type='line', x0=-0.5, x1=len(chart_df['지표'].unique())-0.5, y0=0, y1=0,
-            line=dict(color='red', width=2, dash='dash')
-        )],
-        annotations=[dict(
-            x=0.5, y=0, xref='paper', yref='y',
-            text='SK에너지 기준선', showarrow=False,
-            font=dict(color='red', size=12)
-        )]
-    )
-    
+    fig.update_traces(texttemplate='%{text:.1f}pp', textposition='outside', cliponaxis=False)
+    fig.add_hline(y=0, line_dash='dash', line_color='red',
+                  annotation_text="SK에너지 기준선", annotation_position="bottom right")
+    fig.update_layout(yaxis_title="갭(퍼센트포인트)", xaxis_title="재무 지표",
+                      font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif"))
     return fig
