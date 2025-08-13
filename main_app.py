@@ -393,185 +393,66 @@ def render_financial_results():
         # 분기별 데이터 요약 통계
         if '보고서구분' in quarterly_df.columns:
             report_summary = quarterly_df['보고서구분'].value_counts()
-            st.markdown("**📋 수집된 보고서별 데이터 현황**")
-            for report_type, count in report_summary.items():
-                st.write(f"• {report_type}: {count}개")
+            st.write(report_summary)
         
-        # 분기별 데이터 테이블 표시
-        st.markdown("**📋 분기별 재무지표 상세 데이터**")
-        # '연간' 행 제거
-        quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
-        st.dataframe(quarterly_df, use_container_width=True)
-        
+        # 분기별 트렌드 차트
         if PLOTLY_AVAILABLE:
-            # ✅ 분기가 '연간'이 아닌 행만 차트에 사용
-            chart_input = quarterly_df.copy()
-            if '분기' in chart_input.columns:
-               chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
-
-            st.markdown("**📊 분기별 재무지표 트렌드**")
-            st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="quarterly_trend")
-            
-            st.markdown("**📈 트렌드 분석**")
-            st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="gap_trend")
+            selected_metric = st.selectbox("분기별 차트 항목 선택", quarterly_df['구분'].unique())
+            fig = create_quarterly_trend_chart(quarterly_df, selected_metric)
+            st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("📊 분기별 차트 모듈이 없습니다.")
+            st.info("⚠️ Plotly 패키지가 설치되어 있지 않아 차트를 표시할 수 없습니다.")
 
-    # 갭차이 분석 (완전한 버전)
-    st.markdown("---")
-    st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
-    # ✅ 폴백 포함: *_원시값 부족하면 회사명 컬럼 사용
-    raw_cols = resolve_raw_cols_for_gap(final_df)
-    
-    if len(raw_cols) >= 2:
-        gap_analysis = create_gap_analysis(final_df, raw_cols)
-    
-        if not gap_analysis.empty:
-            st.markdown("**📊 SK에너지 대비 경쟁사 비교 분석표**")
-            st.dataframe(
-                gap_analysis, 
-                use_container_width=True,
-                column_config={"지표": st.column_config.TextColumn("지표", width="medium")},
-                hide_index=False
-            )
-    
-            if PLOTLY_AVAILABLE:
-                gap_chart = create_gap_chart(gap_analysis)
-                if gap_chart is not None:
-                    st.plotly_chart(gap_chart, use_container_width=True, key="gap_chart")
-                else:
-                    st.info("📊 비교 분석 차트를 생성할 수 있는 데이터가 부족합니다.")
-        else:
-            st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
-    else:
-        st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
-    
-    # AI 인사이트 표시
-    if SessionManager.is_data_available('financial_insight'):
+    # 바 차트, 레이더 차트, 갭 차트 등 시각화
+    if PLOTLY_AVAILABLE and SessionManager.is_data_available('financial_data'):
         st.markdown("---")
-        st.subheader("🤖 AI 재무 인사이트")
-        st.markdown(st.session_state.financial_insight)
+        st.subheader("📊 주요 지표 시각화")
+        df = st.session_state.financial_data
+        
+        # 바 차트
+        fig_bar = create_sk_bar_chart(df)
+        st.plotly_chart(fig_bar, use_container_width=True)
+        
+        # 레이더 차트
+        fig_radar = create_sk_radar_chart(df)
+        st.plotly_chart(fig_radar, use_container_width=True)
+        
+        # 갭 차트
+        raw_cols = resolve_raw_cols_for_gap(df)
+        gap_df = create_gap_analysis(df, raw_cols)
+        fig_gap = create_gap_chart(gap_df)
+        st.plotly_chart(fig_gap, use_container_width=True)
 
 def render_manual_upload_tab():
     """수동 파일 업로드 탭 렌더링"""
-    st.subheader("📁 수동 파일 업로드 분석")
-    st.info("💡 DART에서 다운로드한 XBRL 파일을 직접 업로드하여 분석할 수 있습니다.")
+    st.subheader("📁 수동 엑셀 파일 업로드")
     
-    uploaded_files = st.file_uploader(
-        "XBRL 파일 선택 (여러 파일 업로드 가능)",
-        type=['xml', 'xbrl', 'zip'],
-        accept_multiple_files=True,
-        help="DART에서 다운로드한 XBRL 파일을 업로드하세요. 여러 회사의 파일을 동시에 업로드할 수 있습니다."
-    )
-    
-    if uploaded_files:
-        if st.button("📊 수동 업로드 분석 시작", type="secondary"):
-            with st.spinner("XBRL 파일을 분석하고 처리 중입니다..."):
-                try:
-                    processor = FinancialDataProcessor()
-                    dataframes = []
-                    
-                    for uploaded_file in uploaded_files:
-                        st.write(f"🔍 {uploaded_file.name} 처리 중...")
-                        df = processor.load_file(uploaded_file)
-                        if df is not None and not df.empty:
-                            dataframes.append(df)
-                            st.success(f"✅ {uploaded_file.name} 처리 완료")
-                        else:
-                            st.error(f"❌ {uploaded_file.name} 처리 실패")
-                    
-                    if dataframes:
-                        manual_data = processor.merge_company_data(dataframes)
-                        SessionManager.save_data('manual_financial_data', manual_data)
-                        SessionManager.save_data('financial_data', manual_data)
+    uploaded_file = st.file_uploader("수동 재무 데이터 파일 업로드 (.xlsx)", type=["xlsx"])
+    if uploaded_file is not None:
+        try:
+            df_manual = pd.read_excel(uploaded_file)
+            st.session_state.manual_financial_data = df_manual
+            st.success("✅ 수동 업로드 데이터가 성공적으로 로드되었습니다.")
+            
+            # AI 인사이트 수동 생성 (OpenAI 연동)
+            if st.button("🚀 수동 업로드 데이터로 AI 인사이트 생성"):
+                openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
+                manual_insight = openai.generate_financial_insight(df_manual)
+                st.session_state.manual_financial_insight = manual_insight
+                st.success("✅ 수동 업로드 인사이트 생성 완료!")
+            
+            # 업로드 데이터 미리보기
+            st.dataframe(df_manual)
+        except Exception as e:
+            st.error(f"파일 로드 중 오류가 발생했습니다: {str(e)}")
+    else:
+        st.info("엑셀 파일을 업로드하면 수동 재무 데이터를 등록할 수 있습니다.")
 
-                        # AI 인사이트 생성 (DART 자동 수집과 동일한 프롬프트 사용)
-                        with st.spinner("🤖 AI 인사이트 생성 중..."):
-                            openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
-                            manual_financial_insight = openai.generate_financial_insight(manual_data)
-                            SessionManager.save_data('manual_financial_insight', manual_financial_insight, 'manual_financial_insight')
-        
-                        st.success("✅ 수동 업로드 분석 및 AI 인사이트 생성이 완료되었습니다!")
-                    else:
-                        st.error("❌ 처리할 수 있는 데이터가 없습니다.")
-                        
-                except Exception as e:
-                    st.error(f"파일 처리 중 오류가 발생했습니다: {str(e)}")
-
-    # 수동 업로드 결과 표시
-    if SessionManager.is_data_available('manual_financial_data'):
+    # AI 인사이트 표시 (수동 업로드용)
+    if SessionManager.is_data_available('manual_financial_insight'):
         st.markdown("---")
-        st.subheader("💰 수동 업로드 재무분석 결과")
-        final_df = st.session_state.manual_financial_data
-        
-        # 표시용 컬럼만 표시
-        display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
-        st.markdown("**📋 정리된 재무지표 (표시값)**")
-        st.dataframe(final_df[display_cols].set_index('구분'), use_container_width=True)
-       
-        # 분기별 트렌드 차트 추가 (수동 업로드용)
-        if SessionManager.is_data_available('quarterly_data'):
-            st.markdown("---")
-            st.subheader("📈 분기별 성과 및 추이 분석")
-            
-            # 분기별 데이터 요약 정보 표시
-            quarterly_df = st.session_state.quarterly_data
-            st.info(f"📊 수집된 분기별 데이터: {len(quarterly_df)}개 데이터포인트")
-            
-            # 분기별 데이터 요약 통계
-            if '보고서구분' in quarterly_df.columns:
-                report_summary = quarterly_df['보고서구분'].value_counts()
-                st.markdown("**📋 수집된 보고서별 데이터 현황**")
-                for report_type, count in report_summary.items():
-                    st.write(f"• {report_type}: {count}개")
-            
-            # 분기별 데이터 테이블 표시
-            st.markdown("**📋 분기별 재무지표 상세 데이터**")
-            # '연간' 행 제거
-            quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
-            st.dataframe(quarterly_df, use_container_width=True)
-            
-            if PLOTLY_AVAILABLE:
-                # ✅ 분기가 '연간'이 아닌 행만 차트에 사용
-                chart_input = quarterly_df.copy()
-                if '분기' in chart_input.columns:
-                   chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
-
-                st.markdown("**📊 분기별 재무지표 트렌드**")
-                st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="manual_quarterly_trend")
-                
-                st.markdown("**📈 트렌드 분석**")
-                st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="manual_gap_trend")
-            else:
-                st.info("📊 분기별 차트 모듈이 없습니다.")
-
-        # 갭차이 분석 추가
-        st.markdown("---")
-        st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
-        raw_cols = resolve_raw_cols_for_gap(final_df)
-        
-        if len(raw_cols) >= 2:
-            gap_analysis = create_gap_analysis(final_df, raw_cols)
-            if not gap_analysis.empty:
-                st.markdown("**📊 SK에너지 대비 경쟁사 차이 분석표**")
-                st.dataframe(
-                    gap_analysis, 
-                    use_container_width=True,
-                    column_config={"지표": st.column_config.TextColumn("지표", width="medium")},
-                    hide_index=False
-                )
-                if PLOTLY_AVAILABLE:
-                    st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="manual_gap_chart")
-            else:
-                st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
-        else:
-            st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
-        
-        # AI 인사이트 표시 (수동 업로드용)
-        if SessionManager.is_data_available('manual_financial_insight'):
-            st.markdown("---")
-            st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
-            st.markdown(st.session_state.manual_financial_insight)
+        st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
+        st.markdown(st.session_state.manual_financial_insight)
 
 def render_integrated_insight_tab():
     """통합 인사이트 탭 렌더링"""
