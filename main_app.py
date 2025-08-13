@@ -1,4 +1,30 @@
-# -*- coding: utf-8 -*-
+# ✅ 데이터 우선순위: DART 자동 > 수동 업로드 + 디버깅
+        financial_data_for_report = None
+        if SessionManager.is_data_available('financial_data'):
+            financial_data_for_report = st.session_state.financial_data
+            st.info(f"✅ DART 자동 수집 데이터 사용: {financial_data_for_report.shape if hasattr(financial_data_for_report, 'shape') else 'N/A'}")
+        elif SessionManager.is_data_available('manual_financial_data'):
+            financial_data_for_report = st.session_state.manual_financial_data
+            st.info(f"✅ 수동 업로드 데이터 사용: {financial_data_for_report.shape if hasattr(financial_data_for_report, 'shape') else 'N/A'}")
+        else:
+            st.warning("⚠️ 사용할 재무 데이터가 없습니다. 먼저 재무분석을 실행하거나 파일을 업로드하세요.")
+        
+        # ✅ 뉴스 데이터 확인
+        news_data_for_report = st.session_state.get('google_news_data')
+        if news_data_for_report is not None and not news_data_for_report.empty:
+            st.info(f"✅ 뉴스 데이터 사용: {news_data_for_report.shape}")
+        else:
+            st.warning("⚠️ 뉴스 데이터가 없습니다.")
+        
+        # ✅ 인사이트 확인
+        insights_for_report = collect_all_insights()
+        if insights_for_report:
+            st.info(f"✅ AI 인사이트 사용: {len(insights_for_report)}개")
+        else:
+            st.warning("⚠️ AI 인사이트가 없습니다.")
+
+        # ✅ 수정된 PDF 생성 섹션 - 고급 PDF 생성
+        if EXPORT_AVAILABLE and report_format == "# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -644,12 +670,34 @@ def render_report_generation_tab():
         # 보고서 형식 선택
         report_format = st.radio("파일 형식 선택", ["PDF", "Excel"], horizontal=True)
 
-        # ✅ 데이터 우선순위: DART 자동 > 수동 업로드
+        # ✅ 데이터 우선순위: DART 자동 > 수동 업로드 + 상태 표시
         financial_data_for_report = None
         if SessionManager.is_data_available('financial_data'):
             financial_data_for_report = st.session_state.financial_data
+            st.success(f"✅ DART 자동 수집 데이터 사용: {financial_data_for_report.shape if hasattr(financial_data_for_report, 'shape') else 'N/A'}")
+            st.write(f"📋 컬럼: {list(financial_data_for_report.columns) if hasattr(financial_data_for_report, 'columns') else 'N/A'}")
         elif SessionManager.is_data_available('manual_financial_data'):
             financial_data_for_report = st.session_state.manual_financial_data
+            st.success(f"✅ 수동 업로드 데이터 사용: {financial_data_for_report.shape if hasattr(financial_data_for_report, 'shape') else 'N/A'}")
+            st.write(f"📋 컬럼: {list(financial_data_for_report.columns) if hasattr(financial_data_for_report, 'columns') else 'N/A'}")
+        else:
+            st.warning("⚠️ 사용할 재무 데이터가 없습니다. 먼저 재무분석을 실행하거나 파일을 업로드하세요.")
+        
+        # ✅ 뉴스 데이터 확인
+        news_data_for_report = st.session_state.get('google_news_data')
+        if news_data_for_report is not None and not news_data_for_report.empty:
+            st.info(f"✅ 뉴스 데이터 사용: {news_data_for_report.shape}")
+        else:
+            st.warning("⚠️ 뉴스 데이터가 없습니다.")
+        
+        # ✅ 인사이트 확인
+        insights_for_report = collect_all_insights()
+        if insights_for_report:
+            st.info(f"✅ AI 인사이트 사용: {len(insights_for_report)}개")
+            for i, insight in enumerate(insights_for_report):
+                st.write(f"  - 인사이트 {i+1}: {len(insight)} 글자")
+        else:
+            st.warning("⚠️ AI 인사이트가 없습니다.")
 
         # ✅ 수정된 PDF 생성 섹션 - 고급 PDF 생성
         if EXPORT_AVAILABLE and report_format == "PDF":
@@ -661,8 +709,8 @@ def render_report_generation_tab():
                 success = handle_pdf_generation_button(
                     button_clicked=True,
                     financial_data=financial_data_for_report,
-                    news_data=st.session_state.get('google_news_data'),
-                    insights=collect_all_insights(),
+                    news_data=news_data_for_report,
+                    insights=insights_for_report,
                     quarterly_df=st.session_state.get('quarterly_data'),
                     chart_df=st.session_state.get('chart_df'),
                     gap_analysis_df=st.session_state.get('gap_analysis_df'),
@@ -681,8 +729,8 @@ def render_report_generation_tab():
                     try:
                         file_bytes = create_excel_report(
                             financial_data=financial_data_for_report,
-                            news_data=st.session_state.get('google_news_data'),
-                            insights=collect_all_insights()
+                            news_data=news_data_for_report,
+                            insights=insights_for_report
                         )
                         filename = f"SK_Energy_Analysis_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                         mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
