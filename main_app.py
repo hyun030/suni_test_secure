@@ -702,6 +702,18 @@ def render_report_generation_tab():
         )
         st.info("선택한 메일 서비스 링크가 새 탭에서 열립니다.")
 
+        # 생성된 파일 다운로드 버튼
+        if st.session_state.get('generated_file'):
+            st.download_button(
+                label=f"📥 {st.session_state.generated_filename} 다운로드",
+                data=st.session_state.generated_file,
+                file_name=st.session_state.generated_filename,
+                mime=st.session_state.generated_mime,
+                key="download_generated_report_btn"
+            )
+        else:
+            st.info("먼저 보고서를 생성해주세요.")
+
 def main():
     """메인 함수"""
     # 세션 상태 초기화
