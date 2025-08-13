@@ -107,6 +107,7 @@ class OpenAIInsightGenerator:
 - KPI 기준 재설정 또는 목표 재정의 필요 여부
 
 분석은 전문 컨설턴트 수준으로 해주시되, 실무자가 바로 보고 실행방안을 만들 수 있을 정도로 구체적이고 현실적인 조언을 포함해주세요.
+항목별 분석이 끝날 때마다 구분선으로 구분해주세요.
 """
 
             response = self.client.chat.completions.create(
