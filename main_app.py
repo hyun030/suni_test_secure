@@ -806,7 +806,7 @@ def main():
     with tabs[0]:  # 재무분석 탭
         render_financial_analysis_tab()
     
-    with tabs[1]:  # 수동 파일 업로드 탭
+    with tabs[1]:  # 재무분석(파일 업로드) 탭
         render_manual_upload_tab()
     
     with tabs[2]:  # Google News 수집 탭
