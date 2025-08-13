@@ -508,7 +508,6 @@ def render_manual_upload_tab():
         display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
         st.markdown("**📋 정리된 재무지표 (표시값)**")
         st.dataframe(final_df[display_cols].set_index('구분'), use_container_width=True)
-
        
         # 분기별 트렌드 차트 추가 (수동 업로드용)
         if SessionManager.is_data_available('quarterly_data'):
@@ -532,7 +531,7 @@ def render_manual_upload_tab():
             quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
             st.dataframe(quarterly_df, use_container_width=True)
             
-                        if PLOTLY_AVAILABLE:
+            if PLOTLY_AVAILABLE:
                 # ✅ 분기가 '연간'이 아닌 행만 차트에 사용
                 chart_input = quarterly_df.copy()
                 if '분기' in chart_input.columns:
@@ -566,9 +565,8 @@ def render_manual_upload_tab():
             else:
                 st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
         else:
-            st.info("ℹ️ 비교교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
+            st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
         
-
         # AI 인사이트 표시 (수동 업로드용)
         if SessionManager.is_data_available('manual_financial_insight'):
             st.markdown("---")
