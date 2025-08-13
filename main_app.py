@@ -1,1005 +1,837 @@
 # -*- coding: utf-8 -*-
-"""
-🎯 메인 코드 완벽 연동용 SK에너지 PDF 보고서 생성 모듈 (export.py)
-✅ 이미 있는 NanumGothic 폰트 활용 + 메인 코드 호환 함수들 추가
-"""
-
-import io
-import os
+import streamlit as st
 import pandas as pd
 from datetime import datetime
-import streamlit as st
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use('Agg')
 
-# 🔤 한글 폰트 설정 (기존 fonts 폴더 사용)
-plt.rcParams['font.family'] = ['NanumGothic', 'DejaVu Sans', 'sans-serif']
-plt.rcParams['axes.unicode_minus'] = False
+import config
+from data.loader import DartAPICollector, QuarterlyDataCollector
+from data.preprocess import SKFinancialDataProcessor, FinancialDataProcessor 
+from insight.openai_api import OpenAIInsightGenerator
+from visualization.charts import (
+    create_sk_bar_chart, create_sk_radar_chart, 
+    create_quarterly_trend_chart, create_gap_trend_chart, 
+    create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
+)
 
+# ✅ export 모듈 import 수정 - 올바른 경로로 변경
 try:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.platypus import (
-        Paragraph, Table, TableStyle, Spacer, PageBreak, 
-        Image as RLImage, SimpleDocTemplate
-    )
-    from reportlab.lib.styles import ParagraphStyle
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.lib.units import inch
-    REPORTLAB_AVAILABLE = True
-    print("✅ ReportLab 로드 성공")
+    # 현재 디렉토리에 export.py가 있는 경우
+    from export import create_enhanced_pdf_report, create_excel_report, create_pdf_download_button
+    EXPORT_AVAILABLE = True
+    st.success("✅ PDF/Excel 생성 모듈 로드 성공")
 except ImportError:
-    REPORTLAB_AVAILABLE = False
-    print("❌ ReportLab 없음")
-
-def get_font_paths():
-    """기존 fonts 폴더의 폰트 경로를 반환"""
-    font_paths = {
-        "Korean": "fonts/NanumGothic.ttf",
-        "KoreanBold": "fonts/NanumGothicBold.ttf", 
-        "KoreanSerif": "fonts/NanumMyeongjo.ttf"
-    }
-    
-    # 파일 존재 여부 및 유효성 확인 후 반환
-    found_fonts = {}
-    for font_name, font_path in font_paths.items():
-        if os.path.exists(font_path):
-            file_size = os.path.getsize(font_path)
-            if file_size > 0:
-                found_fonts[font_name] = font_path
-                print(f"✅ 폰트 발견: {font_name} = {font_path} ({file_size} bytes)")
-            else:
-                print(f"⚠️ 폰트 파일이 비어있음: {font_path}")
-        else:
-            print(f"⚠️ 폰트 파일을 찾을 수 없음: {font_path}")
-    
-    return found_fonts
-
-def register_fonts():
-    """기존 폰트 등록"""
-    registered_fonts = {
-        "Korean": "Helvetica",
-        "KoreanBold": "Helvetica-Bold"
-    }
-    
-    if not REPORTLAB_AVAILABLE:
-        return registered_fonts
-    
-    font_paths = get_font_paths()
-    
-    for font_name, font_path in font_paths.items():
-        try:
-            if font_name not in pdfmetrics.getRegisteredFontNames():
-                pdfmetrics.registerFont(TTFont(font_name, font_path))
-            registered_fonts[font_name] = font_name
-            print(f"✅ 폰트 등록 성공: {font_name}")
-        except Exception as e:
-            print(f"❌ 폰트 등록 실패 {font_name}: {e}")
-    
-    return registered_fonts
-
-def safe_str_convert(value):
-    """안전한 문자열 변환"""
     try:
-        if pd.isna(value):
-            return ""
-        result = str(value).strip()
-        return result
+        # util 폴더에 있는 경우
+        from util.export import create_enhanced_pdf_report, create_excel_report, create_pdf_download_button
+        EXPORT_AVAILABLE = True
+        st.success("✅ PDF/Excel 생성 모듈 로드 성공 (util 경로)")
+    except ImportError as e:
+        # import 실패 시 대체 함수들 생성
+        def create_excel_report(*args, **kwargs):
+            return b"Excel report generation is not available."
+        
+        def create_enhanced_pdf_report(*args, **kwargs):
+            return b"PDF report generation is not available."
+        
+        def create_pdf_download_button(*args, **kwargs):
+            st.error("❌ PDF 생성 기능을 사용할 수 없습니다.")
+            return False
+            
+        EXPORT_AVAILABLE = False
+        st.error(f"❌ PDF/Excel 생성 모듈 로드 실패: {e}")
+
+from util.email_util import create_email_ui
+from news_collector import create_google_news_tab, GoogleNewsCollector
+
+st.set_page_config(page_title="SK Profit+: 손익 개선 전략 대시보드", page_icon="⚡", layout="wide")
+
+class SessionManager:
+    """세션 상태 관리를 담당하는 클래스"""
+    
+    @staticmethod
+    def initialize():
+        """세션 상태 초기화 및 데이터 지속성 보장"""
+        # 핵심 데이터 변수들
+        core_vars = [
+            'financial_data', 'quarterly_data',
+            'financial_insight', 'integrated_insight',
+            'selected_companies', 'manual_financial_data',
+            'google_news_data', 'google_news_insight',
+            # ✅ PDF 생성을 위한 추가 변수들
+            'chart_df', 'gap_analysis_df', 'insights_list'
+        ]
+        
+        # 각 변수 초기화
+        for var in core_vars:
+            if var not in st.session_state:
+                st.session_state[var] = None
+        
+        # 설정 변수들
+        if 'custom_keywords' not in st.session_state:
+            st.session_state.custom_keywords = config.BENCHMARKING_KEYWORDS
+        
+        if 'last_analysis_time' not in st.session_state:
+            st.session_state.last_analysis_time = None
+        
+        if 'analysis_status' not in st.session_state:
+            st.session_state.analysis_status = {}
+    
+    @staticmethod
+    def save_data(data_type: str, data, insight_type: str = None):
+        """데이터와 인사이트를 세션에 저장"""
+        st.session_state[data_type] = data
+        if insight_type:
+            st.session_state[insight_type] = data
+        st.session_state.last_analysis_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 분석 상태 업데이트
+        if data_type not in st.session_state.analysis_status:
+            st.session_state.analysis_status[data_type] = {}
+        st.session_state.analysis_status[data_type]['completed'] = True
+        st.session_state.analysis_status[data_type]['timestamp'] = st.session_state.last_analysis_time
+        
+        # ✅ PDF 생성을 위한 데이터 전처리 추가
+        if data_type == 'financial_data' and data is not None:
+            # chart_df 생성 (PDF 차트용)
+            st.session_state.chart_df = prepare_chart_data(data)
+            
+            # gap_analysis_df 생성 (PDF 갭분석용) 
+            raw_cols = resolve_raw_cols_for_gap(data)
+            if len(raw_cols) >= 2:
+                st.session_state.gap_analysis_df = create_gap_analysis(data, raw_cols)
+    
+    @staticmethod
+    def get_data_status(data_type: str) -> dict:
+        """데이터 상태 정보 반환"""
+        if data_type in st.session_state.analysis_status:
+            return st.session_state.analysis_status[data_type]
+        return {'completed': False, 'timestamp': None}
+    
+    @staticmethod
+    def is_data_available(data_type: str) -> bool:
+        """데이터 사용 가능 여부 확인"""
+        data = st.session_state.get(data_type)
+        return data is not None and (not hasattr(data, 'empty') or not data.empty)
+
+# ✅ PDF 생성을 위한 데이터 전처리 함수 추가
+def prepare_chart_data(financial_data):
+    """재무 데이터를 차트용 형태로 변환"""
+    if financial_data is None or financial_data.empty:
+        return None
+    
+    try:
+        # financial_data를 chart_df 형태로 변환
+        chart_rows = []
+        
+        # 회사 컬럼 찾기 (구분, _원시값 제외)
+        company_cols = [col for col in financial_data.columns 
+                       if col != '구분' and not col.endswith('_원시값')]
+        
+        for _, row in financial_data.iterrows():
+            metric = row['구분']
+            for company in company_cols:
+                value = row[company]
+                if pd.notna(value):
+                    # 숫자 추출 (%, 조원 등 제거)
+                    try:
+                        if isinstance(value, str):
+                            clean_value = value.replace('%', '').replace('조원', '').replace(',', '')
+                            numeric_value = float(clean_value)
+                        else:
+                            numeric_value = float(value)
+                        
+                        chart_rows.append({
+                            '구분': metric,
+                            '회사': company, 
+                            '수치': numeric_value
+                        })
+                    except:
+                        continue
+        
+        return pd.DataFrame(chart_rows) if chart_rows else None
+        
+    except Exception as e:
+        st.warning(f"차트 데이터 준비 중 오류: {e}")
+        return None
+
+def sort_quarterly_by_quarter(df: pd.DataFrame) -> pd.DataFrame:
+    """분기별 데이터 정렬"""
+    if df.empty:
+        return df
+    
+    out = df.copy()
+    try:
+        # '2024Q1' → (연도=2024, 분기=1) 추출해 정렬키 생성
+        out[['연도','분기번호']] = out['분기'].str.extract(r'(\d{4})Q([1-4])').astype(int)
+        out = (out.sort_values(['연도','분기번호','회사'])
+                   .drop(columns=['연도','분기번호'])
+                   .reset_index(drop=True))
     except Exception:
-        return ""
-
-def create_korean_charts():
-    """한글 폰트로 차트 생성"""
-    charts = {}
+        # 정렬 실패 시 원본 반환
+        pass
+    return out
     
-    try:
-        # matplotlib 한글 폰트 설정
-        font_paths = get_font_paths()
-        if "Korean" in font_paths:
-            plt.rcParams['font.family'] = ['NanumGothic']
-        
-        # 1. 매출 비교 차트
-        fig1, ax1 = plt.subplots(figsize=(10, 6))
-        fig1.patch.set_facecolor('white')
-        
-        companies = ['SK에너지', 'S-Oil', 'GS칼텍스', 'HD현대오일뱅크']
-        revenues = [15.2, 14.8, 13.5, 11.2]
-        colors_list = ['#E31E24', '#FF6B6B', '#4ECDC4', '#45B7D1']
-        
-        bars = ax1.bar(companies, revenues, color=colors_list, alpha=0.8, width=0.6)
-        ax1.set_title('매출액 비교 (조원)', fontsize=14, pad=20, weight='bold')
-        ax1.set_ylabel('매출액 (조원)', fontsize=12, weight='bold')
-        ax1.grid(True, alpha=0.3, axis='y')
-        
-        # 값 표시
-        for bar, value in zip(bars, revenues):
-            height = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2., height + 0.2,
-                    f'{value}조원', ha='center', va='bottom', fontsize=11, weight='bold')
-        
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        charts['revenue_comparison'] = fig1
-        
-    except Exception as e:
-        print(f"차트 생성 실패: {e}")
-        charts['revenue_comparison'] = None
-    
-    try:
-        # 2. ROE 비교 차트
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        fig2.patch.set_facecolor('white')
-        
-        companies = ['SK에너지', 'S-Oil', 'GS칼텍스', 'HD현대오일뱅크']
-        roe_values = [12.3, 11.8, 10.5, 9.2]
-        
-        bars = ax2.bar(companies, roe_values, color='#E31E24', alpha=0.7)
-        ax2.set_title('ROE 비교 (%)', fontsize=14, pad=20, weight='bold')
-        ax2.set_ylabel('ROE (%)', fontsize=12, weight='bold')
-        ax2.grid(True, alpha=0.3, axis='y')
-        
-        # 값 표시
-        for bar, value in zip(bars, roe_values):
-            height = bar.get_height()
-            ax2.text(bar.get_x() + bar.get_width()/2., height + 0.2,
-                    f'{value}%', ha='center', va='bottom', fontsize=11, weight='bold')
-        
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        charts['roe_comparison'] = fig2
-        
-    except Exception as e:
-        print(f"ROE 차트 생성 실패: {e}")
-        charts['roe_comparison'] = None
-    
-    return charts
-
-def safe_create_chart_image(fig, width=480, height=320):
-    """안전한 차트 이미지 변환"""
-    if fig is None or not REPORTLAB_AVAILABLE:
-        return None
-    
-    try:
-        img_buffer = io.BytesIO()
-        fig.savefig(img_buffer, format='png', bbox_inches='tight', 
-                   dpi=100, facecolor='white', edgecolor='none')
-        img_buffer.seek(0)
-        
-        img_data = img_buffer.getvalue()
-        if len(img_data) > 0:
-            img_buffer.seek(0)
-            img = RLImage(img_buffer, width=width, height=height)
-            plt.close(fig)
-            return img
-        
-        plt.close(fig)
-        return None
-        
-    except Exception as e:
-        print(f"차트 이미지 변환 실패: {e}")
-        try:
-            plt.close(fig)
-        except:
-            pass
-        return None
-
-def create_korean_table(registered_fonts):
-    """한글 테이블 생성"""
-    if not REPORTLAB_AVAILABLE:
-        return None
-    
-    try:
-        table_data = [
-            ['구분', 'SK에너지', 'S-Oil', 'GS칼텍스', 'HD현대오일뱅크'],
-            ['매출액(조원)', '15.2', '14.8', '13.5', '11.2'],
-            ['영업이익률(%)', '5.6', '5.3', '4.6', '4.3'],
-            ['ROE(%)', '12.3', '11.8', '10.5', '9.2'],
-            ['ROA(%)', '8.1', '7.8', '7.2', '6.5']
-        ]
-        
-        col_count = len(table_data[0])
-        col_width = 6.5 * inch / col_count
-        
-        table = Table(table_data, colWidths=[col_width] * col_count)
-        
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E31E24')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), registered_fonts.get('KoreanBold', 'Helvetica-Bold')),
-            ('FONTNAME', (0, 1), (-1, -1), registered_fonts.get('Korean', 'Helvetica')),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-        ]))
-        
-        return table
-        
-    except Exception as e:
-        print(f"테이블 생성 실패: {e}")
-        return None
-
-def create_korean_news_table(registered_fonts):
-    """한글 뉴스 테이블 생성"""
-    if not REPORTLAB_AVAILABLE:
-        return None
-    
-    try:
-        news_data = [
-            ['제목', '날짜', '출처'],
-            ['SK에너지, 3분기 실적 시장 기대치 상회', '2024-11-01', '매일경제'],
-            ['정유업계, 원유가 하락으로 마진 개선 기대', '2024-10-28', '한국경제'],
-            ['SK이노베이션, 배터리 사업 분할 추진', '2024-10-25', '조선일보'],
-            ['에너지 전환 정책, 정유업계 영향 분석', '2024-10-22', '이데일리']
-        ]
-        
-        col_widths = [3.5*inch, 1.5*inch, 1.5*inch]
-        table = Table(news_data, colWidths=col_widths)
-        
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4CAF50')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), registered_fonts.get('KoreanBold', 'Helvetica-Bold')),
-            ('FONTNAME', (0, 1), (-1, -1), registered_fonts.get('Korean', 'Helvetica')),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.lightgrey),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        
-        return table
-        
-    except Exception as e:
-        print(f"뉴스 테이블 생성 실패: {e}")
-        return None
-
-def create_korean_pdf_report():
-    """한글 PDF 보고서 생성 (기존 폰트 사용)"""
-    
-    if not REPORTLAB_AVAILABLE:
-        return "ReportLab not available".encode('utf-8')
-    
-    try:
-        # 폰트 등록
-        registered_fonts = register_fonts()
-        
-        # 차트 생성
-        charts = create_korean_charts()
-        
-        # 스타일 정의
-        title_style = ParagraphStyle(
-            'Title',
-            fontName=registered_fonts.get('KoreanBold', 'Helvetica-Bold'),
-            fontSize=18,
-            leading=24,
-            spaceAfter=20,
-            alignment=1,
-            textColor=colors.HexColor('#E31E24')
-        )
-        
-        heading_style = ParagraphStyle(
-            'Heading',
-            fontName=registered_fonts.get('KoreanBold', 'Helvetica-Bold'),
-            fontSize=14,
-            leading=18,
-            spaceBefore=12,
-            spaceAfter=6,
-            textColor=colors.HexColor('#E31E24')
-        )
-        
-        body_style = ParagraphStyle(
-            'Body',
-            fontName=registered_fonts.get('Korean', 'Helvetica'),
-            fontSize=10,
-            leading=14,
-            spaceAfter=6,
-            textColor=colors.HexColor('#2C3E50')
-        )
-        
-        # PDF 문서 생성
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=A4,
-            leftMargin=50,
-            rightMargin=50,
-            topMargin=50,
-            bottomMargin=50
-        )
-        
-        story = []
-        
-        # 제목
-        story.append(Paragraph("SK에너지 경쟁사 분석 보고서", title_style))
-        story.append(Spacer(1, 20))
-        
-        # 보고서 정보
-        info_style = ParagraphStyle(
-            'Info',
-            fontName=registered_fonts.get('Korean', 'Helvetica'),
-            fontSize=12,
-            leading=16,
-            alignment=1,
-            spaceAfter=6
-        )
-        
-        current_date = datetime.now().strftime('%Y년 %m월 %d일')
-        story.append(Paragraph(f"보고일자: {current_date}", info_style))
-        story.append(Paragraph("보고대상: SK이노베이션 경영진", info_style))
-        story.append(Paragraph("보고자: AI 분석 시스템", info_style))
-        story.append(Spacer(1, 30))
-        
-        # 핵심 요약
-        story.append(Paragraph("◆ 핵심 요약", heading_style))
-        story.append(Spacer(1, 10))
-        
-        summary_text = """SK에너지는 매출액 15.2조원으로 업계 1위를 유지하며, 영업이익률 5.6%와 ROE 12.3%를 기록하여 
-        경쟁사 대비 우수한 성과를 보이고 있습니다. 최근 3분기 실적이 시장 기대치를 상회하며 긍정적 전망을 보여주고 있으나, 
-        에너지 전환 정책에 대한 전략적 대응이 필요한 상황입니다."""
-        
-        story.append(Paragraph(summary_text, body_style))
-        story.append(Spacer(1, 20))
-        
-        # 1. 재무분석 결과
-        story.append(Paragraph("1. 재무분석 결과", heading_style))
-        story.append(Spacer(1, 10))
-        
-        # 1-1. 주요 재무지표
-        story.append(Paragraph("1-1. 주요 재무지표", heading_style))
-        story.append(Spacer(1, 6))
-        
-        financial_table = create_korean_table(registered_fonts)
-        if financial_table:
-            story.append(financial_table)
-        else:
-            story.append(Paragraph("• SK에너지 매출액: 15.2조원 (업계 1위)", body_style))
-            story.append(Paragraph("• 영업이익률: 5.6% (경쟁사 대비 우위)", body_style))
-            story.append(Paragraph("• ROE: 12.3%, ROA: 8.1% (우수한 수익성)", body_style))
-        
-        story.append(Spacer(1, 16))
-        
-        # 1-2. 차트 분석
-        story.append(Paragraph("1-2. 차트 분석", heading_style))
-        story.append(Spacer(1, 8))
-        
-        # 매출 비교 차트
-        if charts.get('revenue_comparison'):
-            revenue_img = safe_create_chart_image(charts['revenue_comparison'], width=450, height=270)
-            if revenue_img:
-                story.append(Paragraph("▶ 매출액 비교", body_style))
-                story.append(revenue_img)
-                story.append(Spacer(1, 10))
-        
-        # ROE 비교 차트
-        if charts.get('roe_comparison'):
-            roe_img = safe_create_chart_image(charts['roe_comparison'], width=450, height=270)
-            if roe_img:
-                story.append(Paragraph("▶ ROE 성과 비교", body_style))
-                story.append(roe_img)
-                story.append(Spacer(1, 16))
-        
-        # 차트가 없는 경우 텍스트로 대체
-        if not charts.get('revenue_comparison') and not charts.get('roe_comparison'):
-            story.append(Paragraph("📊 매출 분석: SK에너지가 15.2조원으로 경쟁사 대비 우위를 보입니다", body_style))
-            story.append(Paragraph("📈 수익성: ROE 12.3%로 S-Oil 대비 0.5%p, GS칼텍스 대비 1.8%p 우위", body_style))
-            story.append(Spacer(1, 16))
-        
-        story.append(PageBreak())
-        
-        # 2. 뉴스 분석 결과
-        story.append(Paragraph("2. 뉴스 분석 결과", heading_style))
-        story.append(Spacer(1, 10))
-        
-        # 2-1. 주요 뉴스
-        story.append(Paragraph("2-1. 주요 뉴스", heading_style))
-        story.append(Spacer(1, 6))
-        
-        news_table = create_korean_news_table(registered_fonts)
-        if news_table:
-            story.append(news_table)
-        else:
-            story.append(Paragraph("📰 주요 뉴스:", body_style))
-            story.append(Paragraph("• SK에너지, 3분기 실적 시장 기대치 상회 (매일경제, 2024-11-01)", body_style))
-            story.append(Paragraph("• 정유업계, 원유가 하락으로 마진 개선 기대 (한국경제, 2024-10-28)", body_style))
-        
-        story.append(Spacer(1, 16))
-        
-        # 3. 전략 제언
-        story.append(Paragraph("3. 전략 제언", heading_style))
-        story.append(Spacer(1, 10))
-        
-        strategy_content = [
-            "◆ 단기 전략 (1-2년)",
-            "• 운영 효율성 극대화를 통한 마진 확대에 집중",
-            "• 현금 창출 능력 강화로 안정적 배당 및 투자 재원 확보",
-            "",
-            "◆ 중기 전략 (3-5년)",
-            "• 사업 포트폴리오 다각화 및 신사업 진출 검토",
-            "• 디지털 전환과 공정 혁신을 통한 경쟁력 강화",
-            "",
-            "◆ 장기 전략 (5년 이상)",
-            "• 에너지 전환에 대비한 친환경 사업 확대",
-            "• ESG 경영 체계 구축 및 지속가능한 성장 기반 마련"
-        ]
-        
-        for content in strategy_content:
-            if content.strip():
-                story.append(Paragraph(content, body_style))
-            else:
-                story.append(Spacer(1, 6))
-        
-        # Footer
-        story.append(Spacer(1, 30))
-        footer_style = ParagraphStyle(
-            'Footer',
-            fontName=registered_fonts.get('Korean', 'Helvetica'),
-            fontSize=8,
-            alignment=1,
-            textColor=colors.HexColor('#7F8C8D')
-        )
-        
-        story.append(Paragraph("※ 본 보고서는 AI 분석 시스템에 의해 생성되었습니다", footer_style))
-        story.append(Paragraph(f"생성일시: {datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')}", footer_style))
-        
-        # PDF 빌드
-        doc.build(story)
-        
-        buffer.seek(0)
-        pdf_data = buffer.getvalue()
-        buffer.close()
-        
-        print(f"✅ 한글 PDF 생성 완료 - {len(pdf_data)} bytes")
-        return pdf_data
-        
-    except Exception as e:
-        print(f"❌ 한글 PDF 생성 실패: {e}")
-        import traceback
-        traceback.print_exc()
-        return f"Korean PDF generation failed: {str(e)}".encode('utf-8')
-
-# ===========================================
-# 🔥 메인 코드 연동용 함수들 (버튼 중복 해결)
-# ===========================================
-
-def generate_pdf_report(
-    financial_data=None,
-    news_data=None,
-    insights=None,
-    quarterly_df=None,
-    chart_df=None,
-    gap_analysis_df=None,
-    report_target="SK이노베이션 경영진",
-    report_author="AI 분석 시스템",
-    show_footer=True,
-    **kwargs
-):
+def resolve_raw_cols_for_gap(df: pd.DataFrame) -> list:
     """
-    메인 코드에서 호출하는 PDF 생성 함수 (버튼 없이 데이터만 반환)
+    갭 분석에 사용할 컬럼 목록을 반환.
+    1순위: *_원시값 컬럼
+    2순위: 세션의 selected_companies 중 df에 존재하는 회사명 컬럼
+    3순위: df 전체에서 '구분'과 *_원시값 제외한 회사명 컬럼
     """
-    print(f"🚀 generate_pdf_report 호출됨")
-    print(f"  - financial_data: {type(financial_data)}")
-    print(f"  - news_data: {type(news_data)}")
-    print(f"  - report_target: {report_target}")
+    # 1) *_원시값 우선
+    raw_cols = [c for c in df.columns if c.endswith('_원시값')]
+    if len(raw_cols) >= 2:
+        return raw_cols
+
+    # 2) 선택한 회사 중 존재하는 컬럼
+    preferred = st.session_state.get('selected_companies') or []
+    cols = [c for c in preferred if c in df.columns and c != '구분']
+    if len(cols) >= 2:
+        return cols
+
+    # 3) 남아있는 회사명 컬럼 자동 선택
+    cols = [c for c in df.columns if c != '구분' and not c.endswith('_원시값')]
+    return cols
+
+# ✅ 인사이트 수집 함수 추가
+def collect_all_insights():
+    """모든 인사이트를 리스트로 수집"""
+    insights = []
     
-    try:
-        # PDF 생성
-        pdf_data = create_korean_pdf_report()
-        
-        if isinstance(pdf_data, bytes) and len(pdf_data) > 1000:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"SK에너지_분석보고서_{timestamp}.pdf"
-            
-            return {
-                'success': True,
-                'data': pdf_data,
-                'filename': filename,
-                'mime': 'application/pdf',
-                'message': '✅ 한글 PDF 생성 완료!'
-            }
-        else:
-            return {
-                'success': False,
-                'data': None,
-                'error': f"PDF 생성 실패: {type(pdf_data)}"
-            }
-            
-    except Exception as e:
-        import traceback
-        return {
-            'success': False,
-            'data': None,
-            'error': f"PDF 생성 오류: {str(e)}",
-            'traceback': traceback.format_exc()
-        }
-
-def handle_pdf_generation_button(
-    button_clicked,
-    financial_data=None,
-    news_data=None,
-    insights=None,
-    quarterly_df=None,
-    chart_df=None,
-    gap_analysis_df=None,
-    report_target="SK이노베이션 경영진",
-    report_author="AI 분석 시스템",
-    show_footer=True,
-    **kwargs
-):
-    """
-    메인 코드의 기존 버튼이 클릭되었을 때 호출하는 함수
-    """
-    if button_clicked:
-        with st.spinner("한글 PDF 생성 중... (NanumGothic 폰트 사용)"):
-            result = generate_pdf_report(
-                financial_data=financial_data,
-                news_data=news_data,
-                insights=insights,
-                quarterly_df=quarterly_df,
-                chart_df=chart_df,
-                gap_analysis_df=gap_analysis_df,
-                report_target=report_target,
-                report_author=report_author,
-                show_footer=show_footer,
-                **kwargs
-            )
-            
-            if result['success']:
-                # 성공시 다운로드 버튼 표시
-                st.download_button(
-                    label="📥 PDF 다운로드",
-                    data=result['data'],
-                    file_name=result['filename'],
-                    mime=result['mime'],
-                    type="secondary"
-                )
-                st.success(result['message'])
-                st.info("🔤 **폰트**: fonts 폴더의 NanumGothic 폰트 사용")
-                
-                # 세션에 저장
-                st.session_state.generated_file = result['data']
-                st.session_state.generated_filename = result['filename']
-                st.session_state.generated_mime = result['mime']
-                
-                return True
-            else:
-                # 실패시 에러 표시
-                st.error(f"❌ {result['error']}")
-                if 'traceback' in result:
-                    with st.expander("상세 오류"):
-                        st.code(result['traceback'])
-                return False
-    return None
-
-# 🔄 기존 함수명 호환성 유지
-def create_enhanced_pdf_report(*args, **kwargs):
-    """기존 함수명 호환용 (메인 코드에서 사용)"""
-    result = generate_pdf_report(*args, **kwargs)
-    if result['success']:
-        return result['data']
-    else:
-        return result['error'].encode('utf-8')
-
-def create_excel_report(
-    financial_data=None,
-    news_data=None,
-    insights=None,
-    **kwargs
-):
-    """Excel 보고서 생성 (간단 버전)"""
-    print(f"📊 create_excel_report 호출됨")
+    if SessionManager.is_data_available('financial_insight'):
+        insights.append(st.session_state.financial_insight)
     
-    try:
-        # 간단한 Excel 생성
-        buffer = io.BytesIO()
+    if SessionManager.is_data_available('manual_financial_insight'):
+        insights.append(st.session_state.manual_financial_insight)
         
-        # 샘플 데이터 또는 실제 데이터 사용
-        if financial_data is not None and not financial_data.empty:
-            sample_data = financial_data
-        else:
-            sample_data = pd.DataFrame({
-                '구분': ['매출액(조원)', '영업이익률(%)', 'ROE(%)', 'ROA(%)'],
-                'SK에너지': [15.2, 5.6, 12.3, 8.1],
-                'S-Oil': [14.8, 5.3, 11.8, 7.8],
-                'GS칼텍스': [13.5, 4.6, 10.5, 7.2],
-                'HD현대오일뱅크': [11.2, 4.3, 9.2, 6.5]
-            })
+    if SessionManager.is_data_available('google_news_insight'):
+        insights.append(st.session_state.google_news_insight)
         
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            sample_data.to_excel(writer, sheet_name='재무분석', index=False)
-            
-            # 뉴스 데이터도 추가
-            if news_data is not None and not news_data.empty:
-                news_data.to_excel(writer, sheet_name='뉴스분석', index=False)
-        
-        buffer.seek(0)
-        excel_data = buffer.getvalue()
-        buffer.close()
-        
-        print(f"✅ Excel 생성 완료 - {len(excel_data)} bytes")
-        return excel_data
-        
-    except Exception as e:
-        print(f"❌ Excel 생성 실패: {e}")
-        error_msg = f"Excel 생성 실패: {str(e)}"
-        return error_msg.encode('utf-8')
-
-# ===========================================
-# 🔥 메인 코드 연동용 함수들 (버튼 중복 방지)
-# ===========================================
-
-def generate_pdf_report(
-    financial_data=None,
-    news_data=None,
-    insights=None,
-    quarterly_df=None,
-    chart_df=None,
-    gap_analysis_df=None,
-    report_target="SK이노베이션 경영진",
-    report_author="AI 분석 시스템",
-    show_footer=True,
-    **kwargs
-):
-    """
-    메인 코드에서 호출하는 PDF 생성 함수 (버튼 없이 데이터만 반환)
-    """
-    print(f"🚀 generate_pdf_report 호출됨")
-    print(f"  - financial_data: {type(financial_data)}")
-    print(f"  - news_data: {type(news_data)}")
-    print(f"  - report_target: {report_target}")
+    if SessionManager.is_data_available('integrated_insight'):
+        insights.append(st.session_state.integrated_insight)
     
-    try:
-        # PDF 생성
-        pdf_data = create_korean_pdf_report()
-        
-        if isinstance(pdf_data, bytes) and len(pdf_data) > 1000:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"SK에너지_분석보고서_{timestamp}.pdf"
-            
-            return {
-                'success': True,
-                'data': pdf_data,
-                'filename': filename,
-                'mime': 'application/pdf',
-                'message': '✅ 한글 PDF 생성 완료!'
-            }
-        else:
-            return {
-                'success': False,
-                'data': None,
-                'error': f"PDF 생성 실패: {type(pdf_data)}"
-            }
-            
-    except Exception as e:
-        import traceback
-        return {
-            'success': False,
-            'data': None,
-            'error': f"PDF 생성 오류: {str(e)}",
-            'traceback': traceback.format_exc()
-        }
+    return insights
 
-def create_pdf_download_button(
-    financial_data=None,
-    news_data=None,
-    insights=None,
-    quarterly_df=None,
-    chart_df=None,
-    gap_analysis_df=None,
-    report_target="SK이노베이션 경영진",
-    report_author="AI 분석 시스템",
-    show_footer=True,
-    button_label="📄 한글 PDF 보고서 생성",
-    button_key="korean_pdf_btn",
-    **kwargs
-):
-    """
-    메인 코드용 - 기존 버튼 클릭시 PDF 생성하여 다운로드 버튼 표시
-    """
-    result = generate_pdf_report(
-        financial_data=financial_data,
-        news_data=news_data,
-        insights=insights,
-        quarterly_df=quarterly_df,
-        chart_df=chart_df,
-        gap_analysis_df=gap_analysis_df,
-        report_target=report_target,
-        report_author=report_author,
-        show_footer=show_footer,
-        **kwargs
+def render_financial_analysis_tab():
+    """재무분석 탭 렌더링"""
+    st.subheader("📈 DART 공시 데이터 심층 분석")
+    
+    # 분석 상태 표시
+    if SessionManager.is_data_available('financial_data'):
+        status = SessionManager.get_data_status('financial_data')
+        if status.get('completed'):
+            st.success(f"✅ 재무분석 완료 ({status.get('timestamp', '시간 정보 없음')})")
+    
+    selected_companies = st.multiselect(
+        "분석할 기업 선택", 
+        config.COMPANIES_LIST, 
+        default=config.DEFAULT_SELECTED_COMPANIES
+    )
+    # ✅ 선택한 회사를 세션에 저장 (폴백 로직에서 씀)
+    st.session_state.selected_companies = selected_companies
+    analysis_year = st.selectbox("분석 연도", ["2024", "2023", "2022"])
+    
+    # 분기별 데이터 수집 옵션
+    st.markdown("---")
+    st.subheader("📊 분기별 데이터 수집 설정")
+    
+    collect_quarterly = st.checkbox(
+        "📊 분기별 데이터 수집", 
+        value=True, 
+        help="1분기보고서, 반기보고서, 3분기보고서, 사업보고서를 모두 수집합니다"
     )
     
-    if result['success']:
-        # 성공시 다운로드 버튼 표시
-        st.download_button(
-            label="📥 PDF 다운로드",
-            data=result['data'],
-            file_name=result['filename'],
-            mime=result['mime'],
-            type="secondary"
+    if collect_quarterly:
+        quarterly_years = st.multiselect(
+            "분기별 분석 연도", 
+            ["2024", "2023", "2022"], 
+            default=["2024"], 
+            help="분기별 데이터를 수집할 연도를 선택하세요"
         )
-        st.success(result['message'])
-        st.info("🔤 **폰트**: fonts 폴더의 NanumGothic 폰트 사용")
         
-        # 세션에 저장
-        st.session_state.generated_file = result['data']
-        st.session_state.generated_filename = result['filename']
-        st.session_state.generated_mime = result['mime']
-        
-        return True
-    else:
-        # 실패시 에러 표시
-        st.error(f"❌ {result['error']}")
-        if 'traceback' in result:
-            with st.expander("상세 오류"):
-                st.code(result['traceback'])
-        return False
+        st.info("📋 수집할 보고서: 1분기보고서(Q1, 누적) • 반기보고서(Q2, 누적) • 3분기보고서(Q3, 누적) • 사업보고서(연간, 누적)\n"
+        "🔎 Q4(4분기 당기)는 연간 − (Q1+Q2+Q3)로 산출됩니다.")
 
-def handle_pdf_generation_button(
-    button_clicked,
-    financial_data=None,
-    news_data=None,
-    insights=None,
-    quarterly_df=None,
-    chart_df=None,
-    gap_analysis_df=None,
-    report_target="SK이노베이션 경영진",
-    report_author="AI 분석 시스템",
-    show_footer=True,
-    **kwargs
-):
-    """
-    메인 코드의 기존 버튼이 클릭되었을 때 호출하는 함수
-    """
-    if button_clicked:
-        with st.spinner("한글 PDF 생성 중... (NanumGothic 폰트 사용)"):
-            return create_pdf_download_button(
-                financial_data=financial_data,
-                news_data=news_data,
-                insights=insights,
-                quarterly_df=quarterly_df,
-                chart_df=chart_df,
-                gap_analysis_df=gap_analysis_df,
-                report_target=report_target,
-                report_author=report_author,
-                show_footer=show_footer,
-                **kwargs
-            )
-    return None
-
-# ===========================================
-# 🧪 테스트 및 호환성 확인
-# ===========================================
-
-def test_integration():
-    """메인 코드와의 통합 테스트"""
-    print("🧪 메인 코드 통합 테스트...")
-    
-    # 1. 기본 함수들 존재 확인
-    functions_to_test = [
-        'create_enhanced_pdf_report',
-        'create_excel_report', 
-        'create_pdf_download_button'
-    ]
-    
-    for func_name in functions_to_test:
-        if func_name in globals():
-            print(f"✅ {func_name} 함수 존재")
-        else:
-            print(f"❌ {func_name} 함수 없음")
-    
-    # 2. PDF 생성 테스트
-    try:
-        pdf_data = create_enhanced_pdf_report()
-        if isinstance(pdf_data, bytes) and len(pdf_data) > 1000:
-            print(f"✅ PDF 생성 테스트 성공 - {len(pdf_data)} bytes")
-        else:
-            print(f"❌ PDF 생성 테스트 실패 - {type(pdf_data)}")
-    except Exception as e:
-        print(f"❌ PDF 생성 테스트 오류: {e}")
-    
-    # 3. Excel 생성 테스트
-    try:
-        excel_data = create_excel_report()
-        if isinstance(excel_data, bytes) and len(excel_data) > 100:
-            print(f"✅ Excel 생성 테스트 성공 - {len(excel_data)} bytes")
-        else:
-            print(f"❌ Excel 생성 테스트 실패")
-    except Exception as e:
-        print(f"❌ Excel 생성 테스트 오류: {e}")
-    
-    # 4. 폰트 테스트
-    try:
-        font_paths = get_font_paths()
-        registered_fonts = register_fonts()
-        print(f"✅ 폰트 테스트 완료 - 발견된 폰트: {len(font_paths)}개")
-        print(f"    등록된 폰트: {list(registered_fonts.keys())}")
-    except Exception as e:
-        print(f"❌ 폰트 테스트 오류: {e}")
-    
-    print("🏁 통합 테스트 완료")
-
-def create_streamlit_interface():
-    """Streamlit 인터페이스 생성 (테스트용)"""
-    try:
-        st.title("🏢 SK에너지 분석 보고서 생성기")
-        st.markdown("---")
-        
-        # 기본 정보 입력
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            report_target = st.text_input("보고 대상", value="SK이노베이션 경영진")
-            report_author = st.text_input("보고자", value="AI 분석 시스템")
-        
-        with col2:
-            show_footer = st.checkbox("Footer 표시", value=True)
-            include_charts = st.checkbox("차트 포함", value=True)
-        
-        st.markdown("---")
-        
-        # PDF 생성 버튼
-        col_pdf, col_excel = st.columns(2)
-        
-        with col_pdf:
-            # 🔥 수정된 방식: 테스트용 버튼만 제공
-            if st.button("📄 한글 PDF 테스트", type="primary", key="test_korean_pdf_btn"):
-                success = handle_pdf_generation_button(
-                    button_clicked=True,
-                    report_target=report_target,
-                    report_author=report_author,
-                    show_footer=show_footer
-                )
-        
-        with col_excel:
-            if st.button("📊 Excel 보고서 생성", type="secondary", key="excel_btn"):
-                with st.spinner("Excel 생성 중..."):
-                    try:
-                        excel_data = create_excel_report()
-                        
-                        if isinstance(excel_data, bytes) and len(excel_data) > 100:
-                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            filename = f"SK에너지_분석보고서_{timestamp}.xlsx"
-                            
-                            st.download_button(
-                                label="📥 Excel 다운로드",
-                                data=excel_data,
-                                file_name=filename,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                type="secondary"
-                            )
-                            st.success("✅ Excel 생성 완료!")
-                        else:
-                            st.error("❌ Excel 생성 실패")
-                    except Exception as e:
-                        st.error(f"❌ Excel 생성 오류: {str(e)}")
-        
-        # 테스트 버튼
-        st.markdown("---")
-        st.subheader("🧪 테스트 기능")
-        
-        if st.button("🔍 통합 테스트 실행", key="test_btn"):
-            with st.spinner("통합 테스트 중..."):
-                test_integration()
-                st.success("✅ 통합 테스트 완료! 콘솔을 확인하세요.")
-        
-        # 폰트 상태 확인
-        if st.button("🔤 폰트 상태 확인", key="font_check_btn"):
-            with st.expander("폰트 상태", expanded=True):
-                font_paths = get_font_paths()
-                if font_paths:
-                    st.success(f"✅ {len(font_paths)}개 폰트 발견")
-                    for font_name, font_path in font_paths.items():
-                        file_size = os.path.getsize(font_path) if os.path.exists(font_path) else 0
-                        st.write(f"  • {font_name}: {font_path} ({file_size:,} bytes)")
-                else:
-                    st.warning("⚠️ 폰트 파일을 찾을 수 없습니다")
+    if st.button("🚀 DART 자동분석 시작", type="primary"):
+        with st.spinner("모든 데이터를 수집하고 심층 분석 중입니다..."):
+            try:
+                dart = DartAPICollector(config.DART_API_KEY)
+                processor = SKFinancialDataProcessor()
                 
-                # ReportLab 상태
-                if REPORTLAB_AVAILABLE:
-                    st.success("✅ ReportLab 사용 가능")
+                # 재무 데이터 수집 (개선된 버전)
+                dataframes = []
+                successful_companies = []
+                failed_companies = []
+                
+                st.info(f"🔍 {len(selected_companies)}개 회사의 재무 데이터 수집 시작...")
+                
+                for i, company in enumerate(selected_companies, 1):
+                    with st.status(f"📊 {company} 데이터 수집 중... ({i}/{len(selected_companies)})"):
+                        try:
+                            # DART API 호출
+                            raw_data = dart.get_company_financials_auto(company, analysis_year)
+                            
+                            if raw_data is None or raw_data.empty:
+                                st.warning(f"⚠️ {company}: DART에서 데이터를 찾을 수 없습니다.")
+                                failed_companies.append(company)
+                                continue
+                            
+                            # 데이터 처리
+                            df = processor.process_dart_data(raw_data, company)
+                            
+                            if df is not None and not df.empty:
+                                dataframes.append(df)
+                                successful_companies.append(company)
+                                st.success(f"✅ {company}: {len(df)}개 재무지표 수집 완료")
+                            else:
+                                st.error(f"❌ {company}: 데이터 처리 실패")
+                                failed_companies.append(company)
+                                
+                        except Exception as e:
+                            st.error(f"❌ {company}: 오류 발생 - {str(e)}")
+                            failed_companies.append(company)
+                
+                # 수집 결과 요약
+                if successful_companies:
+                    st.success(f"✅ 재무 데이터 수집 완료: {len(successful_companies)}개 회사 성공")
+                    if failed_companies:
+                        st.warning(f"⚠️ 실패한 회사: {', '.join(failed_companies)}")
                 else:
-                    st.error("❌ ReportLab 없음 - pip install reportlab 필요")
-        
-        # 사용법 안내
-        with st.expander("📖 사용법", expanded=False):
-            st.markdown("""
-            ### 📁 파일 구조
-            ```
-            your_project/
-            ├── export.py          # 이 파일
-            ├── fonts/            # 폰트 폴더
-            │   ├── NanumGothic.ttf
-            │   ├── NanumGothicBold.ttf
-            │   └── NanumMyeongjo.ttf
-            └── main.py           # 메인 코드
-            ```
-            
-            ### 🔧 메인 코드에서 사용법
-            ```python
-            from export import create_pdf_download_button, create_enhanced_pdf_report
-            
-            # Streamlit 앱에서
-            create_pdf_download_button(
-                financial_data=df,
-                news_data=news_df,
-                report_target="SK이노베이션 경영진"
-            )
-            
-            # 직접 PDF 생성
-            pdf_data = create_enhanced_pdf_report(financial_data=df)
-            ```
-            
-            ### ⚙️ 설치 필요 패키지
-            ```bash
-            pip install reportlab pandas matplotlib openpyxl
-            ```
-            """)
-    
-    except Exception as e:
-        st.error(f"❌ Streamlit 인터페이스 오류: {str(e)}")
-        import traceback
-        st.error(f"상세 오류: {traceback.format_exc()}")
+                    st.error("❌ 모든 회사의 데이터 수집에 실패했습니다.")
+                    return
 
-# ===========================================
-# 🚀 메인 실행부
-# ===========================================
+                # 분기별 데이터 수집 (개선된 버전)
+                q_data_list = []
+                if collect_quarterly and quarterly_years:
+                    q_collector = QuarterlyDataCollector(dart)
+                    
+                    # 디버그 정보 표시
+                    st.caption(f"🧭 QuarterlyDataCollector 모듈 = {q_collector.__class__.__module__}")
+                    st.caption(f"🧪 보고서코드 매핑 = {getattr(q_collector, 'report_codes', {})}")
+                    
+                    st.info(f"📊 분기별 데이터 수집 시작... ({', '.join(quarterly_years)}년, {len(successful_companies)}개 회사)")
+                    
+                    total_quarters = 0
+                    quarterly_success = 0
+                    
+                    for year in quarterly_years:
+                        for company in successful_companies:
+                            with st.status(f"📈 {company} {year}년 분기별 데이터 수집 중..."):
+                                try:
+                                    q_df = q_collector.collect_quarterly_data(company, int(year))
+                                    if not q_df.empty:
+                                        q_data_list.append(q_df)
+                                        total_quarters += len(q_df)
+                                        quarterly_success += 1
+                                        st.success(f"✅ {company} {year}년: {len(q_df)}개 분기 데이터")
+                                    else:
+                                        st.warning(f"⚠️ {company} {year}년: 분기 데이터 없음")
+                                except Exception as e:
+                                    st.error(f"❌ {company} {year}년: {str(e)}")
+                    
+                    # 분기별 데이터 수집 결과
+                    if q_data_list:
+                        st.success(f"✅ 분기별 데이터 수집 완료! 총 {quarterly_success}개 회사, {total_quarters}개 분기 데이터")
+                    else:
+                        st.warning("⚠️ 수집된 분기별 데이터가 없습니다.")
+
+                if dataframes:
+                    # 데이터 저장 (✅ PDF용 데이터도 함께 준비)
+                    financial_data = processor.merge_company_data(dataframes)
+                    SessionManager.save_data('financial_data', financial_data)
+                    
+                    if q_data_list:
+                        quarterly_data = pd.concat(q_data_list, ignore_index=True)
+                        # 분기별 데이터 정렬
+                        quarterly_data = sort_quarterly_by_quarter(quarterly_data)
+                        SessionManager.save_data('quarterly_data', quarterly_data)
+                        st.success(f"✅ 총 {len(q_data_list)}개 회사의 분기별 데이터 수집 완료")
+                    
+                    # AI 인사이트 생성
+                    openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
+                    financial_insight = openai.generate_financial_insight(financial_data)
+                    SessionManager.save_data('financial_insight', financial_insight, 'financial_insight')
+                    
+                    st.success("✅ 재무분석 및 AI 인사이트 생성이 완료되었습니다!")
+                else:
+                    st.error("데이터 수집에 실패했습니다.")
+                    
+            except Exception as e:
+                st.error(f"분석 중 오류가 발생했습니다: {str(e)}")
+                st.info("💡 DART API 키가 올바른지 확인해주세요.")
+
+    # 분석 결과 표시 (데이터가 있을 때만)
+    if SessionManager.is_data_available('financial_data'):
+        render_financial_results()
+
+def render_financial_results():
+    """재무분석 결과 표시"""
+    st.markdown("---")
+    st.subheader("💰 재무분석 결과")
+    final_df = st.session_state.financial_data
+    
+    # 표시용 컬럼만 표시 (원시값 제외)
+    display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
+    st.markdown("**📋 정리된 재무지표 (표시값)**")
+    st.dataframe(
+        final_df[display_cols].set_index('구분'), 
+        use_container_width=True,
+        column_config={
+            "구분": st.column_config.TextColumn("구분", width="medium")
+        }
+    )
+
+    # 분기별 트렌드 차트 추가
+    if SessionManager.is_data_available('quarterly_data'):
+        st.markdown("---")
+        st.subheader("📈 분기별 성과 및 추이 분석")
+        
+        # 분기별 데이터 요약 정보 표시
+        quarterly_df = st.session_state.quarterly_data
+        st.info(f"📊 수집된 분기별 데이터: {len(quarterly_df)}개 데이터포인트")
+        
+        # 분기별 데이터 요약 통계
+        if '보고서구분' in quarterly_df.columns:
+            report_summary = quarterly_df['보고서구분'].value_counts()
+            st.markdown("**📋 수집된 보고서별 데이터 현황**")
+            for report_type, count in report_summary.items():
+                st.write(f"• {report_type}: {count}개")
+        
+        # 분기별 데이터 테이블 표시
+        st.markdown("**📋 분기별 재무지표 상세 데이터**")
+        # '연간' 행 제거
+        quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
+        st.dataframe(quarterly_df, use_container_width=True)
+        
+        if PLOTLY_AVAILABLE:
+            # ✅ 분기가 '연간'이 아닌 행만 차트에 사용
+            chart_input = quarterly_df.copy()
+            if '분기' in chart_input.columns:
+               chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
+
+            st.markdown("**📊 분기별 재무지표 트렌드**")
+            st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="quarterly_trend")
+            
+            st.markdown("**📈 트렌드 분석**")
+            st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="gap_trend")
+        else:
+            st.info("📊 분기별 차트 모듈이 없습니다.")
+
+    # 갭차이 분석 (완전한 버전)
+    st.markdown("---")
+    st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
+    # ✅ 폴백 포함: *_원시값 부족하면 회사명 컬럼 사용
+    raw_cols = resolve_raw_cols_for_gap(final_df)
+    
+    if len(raw_cols) >= 2:
+        gap_analysis = create_gap_analysis(final_df, raw_cols)
+    
+        if not gap_analysis.empty:
+            st.markdown("**📊 SK에너지 대비 경쟁사 비교 분석표**")
+            st.dataframe(
+                gap_analysis, 
+                use_container_width=True,
+                column_config={"지표": st.column_config.TextColumn("지표", width="medium")},
+                hide_index=False
+            )
+    
+            if PLOTLY_AVAILABLE:
+                gap_chart = create_gap_chart(gap_analysis)
+                if gap_chart is not None:
+                    st.plotly_chart(gap_chart, use_container_width=True, key="gap_chart")
+                else:
+                    st.info("📊 비교 분석 차트를 생성할 수 있는 데이터가 부족합니다.")
+        else:
+            st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
+    else:
+        st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
+    
+    # AI 인사이트 표시
+    if SessionManager.is_data_available('financial_insight'):
+        st.markdown("---")
+        st.subheader("🤖 AI 재무 인사이트")
+        st.markdown(st.session_state.financial_insight)
+
+def render_manual_upload_tab():
+    """수동 파일 업로드 탭 렌더링"""
+    st.subheader("📁 수동 파일 업로드 분석")
+    st.info("💡 DART에서 다운로드한 XBRL 파일을 직접 업로드하여 분석할 수 있습니다.")
+    
+    uploaded_files = st.file_uploader(
+        "XBRL 파일 선택 (여러 파일 업로드 가능)",
+        type=['xml', 'xbrl', 'zip'],
+        accept_multiple_files=True,
+        help="DART에서 다운로드한 XBRL 파일을 업로드하세요. 여러 회사의 파일을 동시에 업로드할 수 있습니다."
+    )
+    
+    if uploaded_files:
+        if st.button("📊 수동 업로드 분석 시작", type="secondary"):
+            with st.spinner("XBRL 파일을 분석하고 처리 중입니다..."):
+                try:
+                    processor = FinancialDataProcessor()
+                    dataframes = []
+                    
+                    for uploaded_file in uploaded_files:
+                        st.write(f"🔍 {uploaded_file.name} 처리 중...")
+                        df = processor.load_file(uploaded_file)
+                        if df is not None and not df.empty:
+                            dataframes.append(df)
+                            st.success(f"✅ {uploaded_file.name} 처리 완료")
+                        else:
+                            st.error(f"❌ {uploaded_file.name} 처리 실패")
+                    
+                    if dataframes:
+                        manual_data = processor.merge_company_data(dataframes)
+                        SessionManager.save_data('manual_financial_data', manual_data)
+                        SessionManager.save_data('financial_data', manual_data)
+
+                        # AI 인사이트 생성 (DART 자동 수집과 동일한 프롬프트 사용)
+                        with st.spinner("🤖 AI 인사이트 생성 중..."):
+                            openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
+                            manual_financial_insight = openai.generate_financial_insight(manual_data)
+                            SessionManager.save_data('manual_financial_insight', manual_financial_insight, 'manual_financial_insight')
+        
+                        st.success("✅ 수동 업로드 분석 및 AI 인사이트 생성이 완료되었습니다!")
+                    else:
+                        st.error("❌ 처리할 수 있는 데이터가 없습니다.")
+                        
+                except Exception as e:
+                    st.error(f"파일 처리 중 오류가 발생했습니다: {str(e)}")
+
+    # 수동 업로드 결과 표시
+    if SessionManager.is_data_available('manual_financial_data'):
+        st.markdown("---")
+        st.subheader("💰 수동 업로드 재무분석 결과")
+        final_df = st.session_state.manual_financial_data
+        
+        # 표시용 컬럼만 표시
+        display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
+        st.markdown("**📋 정리된 재무지표 (표시값)**")
+        st.dataframe(final_df[display_cols].set_index('구분'), use_container_width=True)
+       
+        # 분기별 트렌드 차트 추가 (수동 업로드용)
+        if SessionManager.is_data_available('quarterly_data'):
+            st.markdown("---")
+            st.subheader("📈 분기별 성과 및 추이 분석")
+            
+            # 분기별 데이터 요약 정보 표시
+            quarterly_df = st.session_state.quarterly_data
+            st.info(f"📊 수집된 분기별 데이터: {len(quarterly_df)}개 데이터포인트")
+            
+            # 분기별 데이터 요약 통계
+            if '보고서구분' in quarterly_df.columns:
+                report_summary = quarterly_df['보고서구분'].value_counts()
+                st.markdown("**📋 수집된 보고서별 데이터 현황**")
+                for report_type, count in report_summary.items():
+                    st.write(f"• {report_type}: {count}개")
+            
+            # 분기별 데이터 테이블 표시
+            st.markdown("**📋 분기별 재무지표 상세 데이터**")
+            # '연간' 행 제거
+            quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
+            st.dataframe(quarterly_df, use_container_width=True)
+            
+            if PLOTLY_AVAILABLE:
+                # ✅ 분기가 '연간'이 아닌 행만 차트에 사용
+                chart_input = quarterly_df.copy()
+                if '분기' in chart_input.columns:
+                   chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
+
+                st.markdown("**📊 분기별 재무지표 트렌드**")
+                st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="manual_quarterly_trend")
+                
+                st.markdown("**📈 트렌드 분석**")
+                st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="manual_gap_trend")
+            else:
+                st.info("📊 분기별 차트 모듈이 없습니다.")
+
+        # 갭차이 분석 추가
+        st.markdown("---")
+        st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
+        raw_cols = resolve_raw_cols_for_gap(final_df)
+        
+        if len(raw_cols) >= 2:
+            gap_analysis = create_gap_analysis(final_df, raw_cols)
+            if not gap_analysis.empty:
+                st.markdown("**📊 SK에너지 대비 경쟁사 차이 분석표**")
+                st.dataframe(
+                    gap_analysis, 
+                    use_container_width=True,
+                    column_config={"지표": st.column_config.TextColumn("지표", width="medium")},
+                    hide_index=False
+                )
+                if PLOTLY_AVAILABLE:
+                    st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="manual_gap_chart")
+            else:
+                st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
+        else:
+            st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
+        
+        # AI 인사이트 표시 (수동 업로드용)
+        if SessionManager.is_data_available('manual_financial_insight'):
+            st.markdown("---")
+            st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
+            st.markdown(st.session_state.manual_financial_insight)
+
+def render_integrated_insight_tab():
+    """통합 인사이트 탭 렌더링"""
+    st.subheader("🧠 통합 인사이트 생성")
+    
+    # 분석 상태 표시
+    if SessionManager.is_data_available('integrated_insight'):
+        status = SessionManager.get_data_status('integrated_insight')
+        if status.get('completed'):
+            st.success(f"✅ 통합 인사이트 완료 ({status.get('timestamp', '시간 정보 없음')})")
+    
+    if st.button("🚀 통합 인사이트 생성", type="primary"):
+        # 사용 가능한 인사이트들 수집
+        available_insights = []
+        
+        if SessionManager.is_data_available('financial_insight'):
+            available_insights.append(("자동 재무분석", st.session_state.financial_insight))
+        
+        if SessionManager.is_data_available('manual_financial_insight'):
+            available_insights.append(("수동 재무분석", st.session_state.manual_financial_insight))
+        
+        if SessionManager.is_data_available('google_news_insight'):
+            available_insights.append(("구글 뉴스 분석", st.session_state.google_news_insight))
+        
+        if available_insights:
+            with st.spinner("모든 인사이트를 통합 분석 중..."):
+                try:
+                    openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
+                    
+                    # 모든 인사이트를 하나의 텍스트로 결합
+                    combined_insights = "\n\n".join([f"=== {title} ===\n{insight}" for title, insight in available_insights])
+                    
+                    integrated_insight = openai.generate_integrated_insight(
+                        combined_insights,
+                        None
+                    )
+                    SessionManager.save_data('integrated_insight', integrated_insight, 'integrated_insight')
+                    st.success("✅ 통합 인사이트가 생성되었습니다!")
+                    
+                except Exception as e:
+                    st.error(f"통합 인사이트 생성 중 오류가 발생했습니다: {str(e)}")
+        else:
+            st.warning("⚠️ 최소 하나의 인사이트(재무분석 또는 구글뉴스)가 필요합니다.")
+    
+    # 통합 인사이트 결과 표시
+    if SessionManager.is_data_available('integrated_insight'):
+        st.subheader("🤖 통합 인사이트 결과")
+        st.markdown(st.session_state.integrated_insight)
+    else:
+        st.info("재무분석 또는 구글뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
+
+def render_report_generation_tab():
+    """보고서 생성 탭 렌더링"""
+    st.subheader("📄 통합 보고서 생성 & 이메일 서비스 바로가기")
+
+    # 2열 레이아웃: PDF 생성 + 이메일 입력
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.write("**📥 보고서 다운로드**")
+
+        # 사용자 입력
+        report_target = st.text_input("보고 대상", value="SK이노베이션 경영진")
+        report_author = st.text_input("보고자", value="")
+        show_footer = st.checkbox(
+            "푸터 문구 표시(※ 본 보고서는 대시보드에서 자동 생성되었습니다.)", 
+            value=False
+        )
+
+        # 보고서 형식 선택
+        report_format = st.radio("파일 형식 선택", ["PDF", "Excel"], horizontal=True)
+
+        # ✅ export.py의 create_pdf_download_button 함수 사용
+        if EXPORT_AVAILABLE and report_format == "PDF":
+            st.markdown("---")
+            st.markdown("**🚀 고급 PDF 생성 (export.py 모듈 사용)**")
+            
+            # 데이터 우선순위: DART 자동 > 수동 업로드
+            financial_data_for_report = None
+            if SessionManager.is_data_available('financial_data'):
+                financial_data_for_report = st.session_state.financial_data
+            elif SessionManager.is_data_available('manual_financial_data'):
+                financial_data_for_report = st.session_state.manual_financial_data
+            
+            # PDF 다운로드 버튼 (export.py의 함수 직접 사용)
+            create_pdf_download_button(
+                financial_data=financial_data_for_report,
+                news_data=st.session_state.get('google_news_data'),
+                insights=collect_all_insights(),
+                quarterly_df=st.session_state.get('quarterly_data'),
+                chart_df=st.session_state.get('chart_df'),
+                gap_analysis_df=st.session_state.get('gap_analysis_df'),
+                report_target=report_target.strip() or "SK이노베이션 경영진",
+                report_author=report_author.strip() or "AI 분석 시스템",
+                show_footer=show_footer
+            )
+
+        # ✅ 기존 보고서 생성 버튼 (fallback)
+        if st.button("📥 보고서 생성 (기본)", type="secondary", key="make_report_basic"):
+            # 데이터 우선순위: DART 자동 > 수동 업로드
+            financial_data_for_report = None
+            if SessionManager.is_data_available('financial_data'):
+                financial_data_for_report = st.session_state.financial_data
+            elif SessionManager.is_data_available('manual_financial_data'):
+                financial_data_for_report = st.session_state.manual_financial_data
+
+            # 선택적 입력
+            quarterly_df = st.session_state.get("quarterly_data")
+
+            with st.spinner("📄 보고서 생성 중..."):
+                try:
+                    if report_format == "PDF":
+                        file_bytes = create_enhanced_pdf_report(
+                            financial_data=financial_data_for_report,
+                            news_data=st.session_state.get('google_news_data'),
+                            insights=collect_all_insights(),
+                            quarterly_df=quarterly_df,
+                            chart_df=st.session_state.get('chart_df'),
+                            gap_analysis_df=st.session_state.get('gap_analysis_df'),
+                            show_footer=show_footer,
+                            report_target=report_target.strip() or "보고 대상 미기재",
+                            report_author=report_author.strip() or "보고자 미기재"
+                        )
+                        filename = f"SK_Energy_Analysis_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                        mime_type = "application/pdf"
+                    else:
+                        file_bytes = create_excel_report(
+                            financial_data=financial_data_for_report,
+                            news_data=st.session_state.get('google_news_data'),
+                            insights=collect_all_insights()
+                        )
+                        filename = f"SK_Energy_Analysis_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+                    if file_bytes and isinstance(file_bytes, bytes) and len(file_bytes) > 1000:
+                        # 세션에 파일 정보 저장
+                        st.session_state.generated_file = file_bytes
+                        st.session_state.generated_filename = filename
+                        st.session_state.generated_mime = mime_type
+
+                        st.download_button(
+                            label="⬇️ 보고서 다운로드",
+                            data=file_bytes,
+                            file_name=filename,
+                            mime=mime_type
+                        )
+                        st.success("✅ 보고서가 성공적으로 생성되었습니다!")
+                    else:
+                        st.error("❌ 보고서 생성에 실패했습니다.")
+                        if isinstance(file_bytes, bytes):
+                            error_msg = file_bytes.decode('utf-8', errors='ignore')
+                            st.error(f"오류 내용: {error_msg}")
+                        
+                except Exception as e:
+                    st.error(f"보고서 생성 중 오류가 발생했습니다: {str(e)}")
+
+    with col2:
+        st.write("**📧 이메일 서비스 바로가기**")
+
+        mail_providers = {
+            "네이버": "https://mail.naver.com/",
+            "구글(Gmail)": "https://mail.google.com/",
+            "다음": "https://mail.daum.net/",
+            "네이트": "https://mail.nate.com/",
+            "야후": "https://mail.yahoo.com/",
+            "아웃룩(Outlook)": "https://outlook.live.com/",
+            "프로톤메일(ProtonMail)": "https://mail.proton.me/",
+            "조호메일(Zoho Mail)": "https://mail.zoho.com/",
+            "GMX 메일": "https://www.gmx.com/",
+            "아이클라우드(iCloud Mail)": "https://www.icloud.com/mail",
+            "메일닷컴(Mail.com)": "https://www.mail.com/",
+            "AOL 메일": "https://mail.aol.com/"
+        }
+
+        selected_provider = st.selectbox(
+            "메일 서비스 선택",
+            list(mail_providers.keys()),
+            key="mail_provider_select"
+        )
+        url = mail_providers[selected_provider]
+
+        st.markdown(
+            f"[{selected_provider} 메일 바로가기]({url})",
+            unsafe_allow_html=True
+        )
+        st.info("선택한 메일 서비스 링크가 새 탭에서 열립니다.")
+
+        # 생성된 파일 다운로드 버튼
+        if st.session_state.get('generated_file'):
+            st.download_button(
+                label=f"📥 {st.session_state.generated_filename} 다운로드",
+                data=st.session_state.generated_file,
+                file_name=st.session_state.generated_filename,
+                mime=st.session_state.generated_mime,
+                key="download_generated_report_btn"
+            )
+        else:
+            st.info("먼저 보고서를 생성해주세요.")
+
+
+def main():
+    """메인 함수"""
+    # 세션 상태 초기화
+    SessionManager.initialize()
+    
+    st.title("⚡SK Profit+: 손익 개선 전략 대시보드")
+    
+    # 마지막 분석 시간 표시
+    if st.session_state.last_analysis_time:
+        st.info(f"🕒 마지막 분석 시간: {st.session_state.last_analysis_time}")
+    
+    # Export 모듈 상태 표시 (사이드바로 이동)
+    with st.sidebar:
+        st.header("📊 시스템 상태")
+        if EXPORT_AVAILABLE:
+            st.success("✅ PDF/Excel 보고서 생성 가능")
+        else:
+            st.warning("⚠️ PDF/Excel 생성 불가")
+            st.caption("export.py 및 reportlab 확인 필요")
+            
+        # 데이터 상태 요약
+        st.header("📋 데이터 현황")
+        data_summary = {
+            "재무 데이터": SessionManager.is_data_available('financial_data'),
+            "분기별 데이터": SessionManager.is_data_available('quarterly_data'), 
+            "뉴스 데이터": SessionManager.is_data_available('google_news_data'),
+            "통합 인사이트": SessionManager.is_data_available('integrated_insight')
+        }
+        
+        for name, available in data_summary.items():
+            if available:
+                st.success(f"✅ {name}")
+            else:
+                st.info(f"⏳ {name}")
+    
+    # 탭 생성
+    tabs = st.tabs([
+        "📈 재무분석", 
+        "📁 수동 파일 업로드", 
+        "🔍 뉴스 분석", 
+        "🧠 통합 인사이트", 
+        "📄 보고서 생성"
+    ])
+    
+    # 각 탭 렌더링
+    with tabs[0]:  # 재무분석 탭
+        render_financial_analysis_tab()
+    
+    with tabs[1]:  # 수동 파일 업로드 탭
+        render_manual_upload_tab()
+    
+    with tabs[2]:  # Google News 수집 탭
+        create_google_news_tab()
+    
+    with tabs[3]:  # 통합 인사이트 탭
+        render_integrated_insight_tab()
+    
+    with tabs[4]:  # 보고서 생성 탭
+        render_report_generation_tab()
+
 
 if __name__ == "__main__":
-    print("🚀 SK에너지 PDF 보고서 생성 모듈 실행")
-    print("=" * 50)
-    
-    # 환경 확인
-    print("📋 환경 확인:")
-    print(f"  - ReportLab: {'✅ 사용 가능' if REPORTLAB_AVAILABLE else '❌ 없음'}")
-    print(f"  - Pandas: {'✅ 사용 가능' if 'pd' in globals() else '❌ 없음'}")
-    print(f"  - Matplotlib: {'✅ 사용 가능' if 'plt' in globals() else '❌ 없음'}")
-    
-    # 폰트 확인
-    font_paths = get_font_paths()
-    print(f"  - 폰트: {'✅ ' + str(len(font_paths)) + '개 발견' if font_paths else '❌ 없음'}")
-    
-    # Streamlit 환경에서 실행되는지 확인
-    try:
-        if 'streamlit' in st.__module__:
-            print("🌐 Streamlit 환경에서 실행")
-            create_streamlit_interface()
-        else:
-            print("💻 일반 Python 환경에서 실행")
-            test_integration()
-    except:
-        print("💻 일반 Python 환경에서 실행")
-        test_integration()
-    
-    print("=" * 50)
-    print("✅ 모듈 로드 완료! 메인 코드에서 import 하여 사용하세요.")
-    print("""
-📖 메인 코드 연동 방법:
-
-방법 1: 기존 버튼에 연결
-    from export import handle_pdf_generation_button
-    
-    if st.button("PDF 생성"):
-        handle_pdf_generation_button(
-            button_clicked=True,
-            financial_data=df,
-            news_data=news_df
-        )
-
-방법 2: 직접 PDF 생성
-    from export import generate_pdf_report
-    
-    result = generate_pdf_report(financial_data=df)
-    if result['success']:
-        st.download_button("다운로드", result['data'], result['filename'])
-
-방법 3: 기존 create_enhanced_pdf_report 사용 (호환)
-    from export import create_enhanced_pdf_report
-    pdf_data = create_enhanced_pdf_report(financial_data=df)
-    """)
+    main()
