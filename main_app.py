@@ -367,7 +367,7 @@ def render_financial_analysis_tab():
 def render_financial_results():
     """재무분석 결과 표시"""
     st.markdown("---")
-    st.subheader("💰 재무분석 결과")
+    st.subheader("💰 손익계산서(연간)")
     final_df = st.session_state.financial_data
     
     # 표시용 컬럼만 표시 (원시값 제외)
@@ -501,7 +501,7 @@ def render_manual_upload_tab():
     # 수동 업로드 결과 표시
     if SessionManager.is_data_available('manual_financial_data'):
         st.markdown("---")
-        st.subheader("💰 수동 업로드 재무분석 결과")
+        st.subheader("💰 손익계산서(연간)")
         final_df = st.session_state.manual_financial_data
         
         # 표시용 컬럼만 표시
