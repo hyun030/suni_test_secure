@@ -409,10 +409,10 @@ def render_financial_results():
             if '분기' in chart_input.columns:
                chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
 
-            st.markdown("**📊 분기별 재무지표 트렌드**")
+            # 분기별 재무지표 트렌드
             st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="quarterly_trend")
             
-            st.markdown("**📈 트렌드 분석**")
+            # 트렌드 분석
             st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="gap_trend")
         else:
             st.info("📊 분기별 차트 모듈이 없습니다.")
@@ -537,10 +537,10 @@ def render_manual_upload_tab():
                 if '분기' in chart_input.columns:
                    chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
 
-                st.markdown("**📊 분기별 재무지표 트렌드**")
+                # 분기별 재무지표 트렌드
                 st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="manual_quarterly_trend")
                 
-                st.markdown("**📈 트렌드 분석**")
+                # 트렌드 분석
                 st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="manual_gap_trend")
             else:
                 st.info("📊 분기별 차트 모듈이 없습니다.")
