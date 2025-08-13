@@ -185,7 +185,7 @@ class GoogleNewsCollector:
 
 def create_google_news_tab():
     """Google News 수집 탭 생성"""
-    st.subheader("🔍 정유 업계 관련 Google 뉴스 수집")
+    st.subheader("📰 정유 업계 관련 Google 뉴스 수집")
     st.info("💡 Google News API를 통해 정유 관련 최신 뉴스를 수집하고 분석합니다.")
     
     # 분석 상태 표시
