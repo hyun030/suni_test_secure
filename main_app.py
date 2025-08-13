@@ -624,14 +624,14 @@ def render_integrated_insight_tab():
         st.info("재무 분석과 구글 뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
 
 def render_report_generation_tab():
-    """보고서 생성 탭 렌더링 - PDF만"""
-    st.subheader("📄 PDF 보고서 생성 & 이메일 서비스 바로가기")
+    """보고서 생성 탭 렌더링"""
+    st.subheader("📄 통합 보고서 생성 & 이메일 서비스 바로가기")
 
     # 2열 레이아웃: PDF 생성 + 이메일 입력
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.write("**📄 PDF 보고서 다운로드**")
+        st.write("**📥 보고서 다운로드**")
 
         # 사용자 입력
         report_target = st.text_input("보고 대상", value="SK이노베이션 경영진")
@@ -641,6 +641,9 @@ def render_report_generation_tab():
             value=False
         )
 
+        # 보고서 형식 선택
+        report_format = st.radio("파일 형식 선택", ["PDF", "Excel"], horizontal=True)
+
         # ✅ 데이터 우선순위: DART 자동 > 수동 업로드
         financial_data_for_report = None
         if SessionManager.is_data_available('financial_data'):
@@ -648,13 +651,13 @@ def render_report_generation_tab():
         elif SessionManager.is_data_available('manual_financial_data'):
             financial_data_for_report = st.session_state.manual_financial_data
 
-        # ✅ PDF 생성 섹션
-        if EXPORT_AVAILABLE:
+        # ✅ 수정된 PDF 생성 섹션 - 고급 PDF 생성
+        if EXPORT_AVAILABLE and report_format == "PDF":
             st.markdown("---")
-            st.markdown("**🚀 한글 PDF 생성 (NanumGothic 폰트)**")
+            st.markdown("**🚀 고급 PDF 생성 (export.py 모듈 사용)**")
             
             # ✅ 버튼을 직접 만들고 클릭 처리
-            if st.button("📄 PDF 보고서 생성", type="primary", key="advanced_pdf_btn"):
+            if st.button("📄 한글 PDF 생성 (NanumGothic 폰트)", type="primary", key="advanced_pdf_btn"):
                 success = handle_pdf_generation_button(
                     button_clicked=True,
                     financial_data=financial_data_for_report,
@@ -667,7 +670,48 @@ def render_report_generation_tab():
                     report_author=report_author.strip() or "AI 분석 시스템",
                     show_footer=show_footer
                 )
-        else:
+
+        # ✅ Excel 생성 섹션
+        if report_format == "Excel":
+            st.markdown("---")
+            st.markdown("**📊 Excel 보고서 생성**")
+            
+            if st.button("📊 Excel 보고서 생성", type="secondary", key="make_excel_report"):
+                with st.spinner("📊 Excel 보고서 생성 중..."):
+                    try:
+                        file_bytes = create_excel_report(
+                            financial_data=financial_data_for_report,
+                            news_data=st.session_state.get('google_news_data'),
+                            insights=collect_all_insights()
+                        )
+                        filename = f"SK_Energy_Analysis_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+                        if file_bytes and isinstance(file_bytes, bytes) and len(file_bytes) > 1000:
+                            # 세션에 파일 정보 저장
+                            st.session_state.generated_file = file_bytes
+                            st.session_state.generated_filename = filename
+                            st.session_state.generated_mime = mime_type
+
+                            st.download_button(
+                                label="📥 Excel 다운로드",
+                                data=file_bytes,
+                                file_name=filename,
+                                mime=mime_type,
+                                type="secondary"
+                            )
+                            st.success("✅ Excel 보고서가 성공적으로 생성되었습니다!")
+                        else:
+                            st.error("❌ Excel 보고서 생성에 실패했습니다.")
+                            if isinstance(file_bytes, bytes):
+                                error_msg = file_bytes.decode('utf-8', errors='ignore')
+                                st.error(f"오류 내용: {error_msg}")
+                            
+                    except Exception as e:
+                        st.error(f"Excel 보고서 생성 중 오류가 발생했습니다: {str(e)}")
+
+        # ✅ PDF 생성 불가능한 경우 안내
+        if not EXPORT_AVAILABLE and report_format == "PDF":
             st.warning("⚠️ PDF 생성 기능이 비활성화되어 있습니다.")
             st.info("💡 export.py 파일과 reportlab 패키지를 확인해주세요.")
 
@@ -701,6 +745,18 @@ def render_report_generation_tab():
             unsafe_allow_html=True
         )
         st.info("선택한 메일 서비스 링크가 새 탭에서 열립니다.")
+
+        # 생성된 파일 다운로드 버튼
+        if st.session_state.get('generated_file'):
+            st.download_button(
+                label=f"📥 {st.session_state.generated_filename} 다운로드",
+                data=st.session_state.generated_file,
+                file_name=st.session_state.generated_filename,
+                mime=st.session_state.generated_mime,
+                key="download_generated_report_btn"
+            )
+        else:
+            st.info("먼저 보고서를 생성해주세요.")
 
 def main():
     """메인 함수"""
