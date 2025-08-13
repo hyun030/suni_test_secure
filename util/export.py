@@ -465,34 +465,126 @@ def create_korean_pdf_report():
         return f"Korean PDF generation failed: {str(e)}".encode('utf-8')
 
 # ===========================================
-# 🔥 메인 코드 호환을 위한 함수들 추가
+# 🔥 메인 코드 연동용 함수들 (버튼 중복 해결)
 # ===========================================
 
-def create_enhanced_pdf_report(
+def generate_pdf_report(
     financial_data=None,
     news_data=None,
     insights=None,
     quarterly_df=None,
     chart_df=None,
     gap_analysis_df=None,
-    show_footer=True,
     report_target="SK이노베이션 경영진",
     report_author="AI 분석 시스템",
+    show_footer=True,
     **kwargs
 ):
     """
-    메인 코드 호환용 PDF 보고서 생성 함수
-    모든 파라미터를 받지만 기존 create_korean_pdf_report() 호출
+    메인 코드에서 호출하는 PDF 생성 함수 (버튼 없이 데이터만 반환)
     """
-    print(f"📄 create_enhanced_pdf_report 호출됨")
+    print(f"🚀 generate_pdf_report 호출됨")
     print(f"  - financial_data: {type(financial_data)}")
     print(f"  - news_data: {type(news_data)}")
-    print(f"  - insights: {type(insights)}")
     print(f"  - report_target: {report_target}")
-    print(f"  - report_author: {report_author}")
     
-    # 기존 한글 PDF 생성 함수 호출
-    return create_korean_pdf_report()
+    try:
+        # PDF 생성
+        pdf_data = create_korean_pdf_report()
+        
+        if isinstance(pdf_data, bytes) and len(pdf_data) > 1000:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"SK에너지_분석보고서_{timestamp}.pdf"
+            
+            return {
+                'success': True,
+                'data': pdf_data,
+                'filename': filename,
+                'mime': 'application/pdf',
+                'message': '✅ 한글 PDF 생성 완료!'
+            }
+        else:
+            return {
+                'success': False,
+                'data': None,
+                'error': f"PDF 생성 실패: {type(pdf_data)}"
+            }
+            
+    except Exception as e:
+        import traceback
+        return {
+            'success': False,
+            'data': None,
+            'error': f"PDF 생성 오류: {str(e)}",
+            'traceback': traceback.format_exc()
+        }
+
+def handle_pdf_generation_button(
+    button_clicked,
+    financial_data=None,
+    news_data=None,
+    insights=None,
+    quarterly_df=None,
+    chart_df=None,
+    gap_analysis_df=None,
+    report_target="SK이노베이션 경영진",
+    report_author="AI 분석 시스템",
+    show_footer=True,
+    **kwargs
+):
+    """
+    메인 코드의 기존 버튼이 클릭되었을 때 호출하는 함수
+    """
+    if button_clicked:
+        with st.spinner("한글 PDF 생성 중... (NanumGothic 폰트 사용)"):
+            result = generate_pdf_report(
+                financial_data=financial_data,
+                news_data=news_data,
+                insights=insights,
+                quarterly_df=quarterly_df,
+                chart_df=chart_df,
+                gap_analysis_df=gap_analysis_df,
+                report_target=report_target,
+                report_author=report_author,
+                show_footer=show_footer,
+                **kwargs
+            )
+            
+            if result['success']:
+                # 성공시 다운로드 버튼 표시
+                st.download_button(
+                    label="📥 PDF 다운로드",
+                    data=result['data'],
+                    file_name=result['filename'],
+                    mime=result['mime'],
+                    type="secondary"
+                )
+                st.success(result['message'])
+                st.info("🔤 **폰트**: fonts 폴더의 NanumGothic 폰트 사용")
+                
+                # 세션에 저장
+                st.session_state.generated_file = result['data']
+                st.session_state.generated_filename = result['filename']
+                st.session_state.generated_mime = result['mime']
+                
+                return True
+            else:
+                # 실패시 에러 표시
+                st.error(f"❌ {result['error']}")
+                if 'traceback' in result:
+                    with st.expander("상세 오류"):
+                        st.code(result['traceback'])
+                return False
+    return None
+
+# 🔄 기존 함수명 호환성 유지
+def create_enhanced_pdf_report(*args, **kwargs):
+    """기존 함수명 호환용 (메인 코드에서 사용)"""
+    result = generate_pdf_report(*args, **kwargs)
+    if result['success']:
+        return result['data']
+    else:
+        return result['error'].encode('utf-8')
 
 def create_excel_report(
     financial_data=None,
@@ -756,15 +848,14 @@ def create_streamlit_interface():
         col_pdf, col_excel = st.columns(2)
         
         with col_pdf:
-            # 🔥 수정된 방식: 버튼을 직접 만들고 클릭 처리
-            if st.button("📄 한글 PDF 보고서 생성 (NanumGothic 폰트)", type="primary", key="test_korean_pdf_btn"):
-                with st.spinner("한글 PDF 생성 중..."):
-                    handle_pdf_generation_button(
-                        button_clicked=True,
-                        report_target=report_target,
-                        report_author=report_author,
-                        show_footer=show_footer
-                    )
+            # 🔥 수정된 방식: 테스트용 버튼만 제공
+            if st.button("📄 한글 PDF 테스트", type="primary", key="test_korean_pdf_btn"):
+                success = handle_pdf_generation_button(
+                    button_clicked=True,
+                    report_target=report_target,
+                    report_author=report_author,
+                    show_footer=show_footer
+                )
         
         with col_excel:
             if st.button("📊 Excel 보고서 생성", type="secondary", key="excel_btn"):
