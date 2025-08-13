@@ -178,9 +178,10 @@ def create_real_data_charts(financial_data):
             
             # 값 표시
             for bar, value in zip(bars, roe_values):
-                height = bar.get_height()
-                ax2.text(bar.get_x() + bar.get_width()/2., height + max(roe_values)*0.01,
-                        f'{value:.1f}%', ha='center', va='bottom', fontsize=11, weight='bold')
+                if value > 0:  # 0보다 큰 값만 표시
+                    height = bar.get_height()
+                    ax2.text(bar.get_x() + bar.get_width()/2., height + max(roe_values)*0.01,
+                            f'{value:.1f}%', ha='center', va='bottom', fontsize=11, weight='bold')
             
             plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
@@ -188,20 +189,26 @@ def create_real_data_charts(financial_data):
         
         # 차트가 없으면 샘플 차트로 폴백
         if not charts:
+            print("⚠️ 실제 데이터 차트 생성 실패, 샘플 차트 사용")
             return create_korean_charts()
         
+        print(f"✅ 실제 데이터 차트 생성 완료: {list(charts.keys())}")
         return charts
         
     except Exception as e:
-        print(f"실제 데이터 차트 생성 실패: {e}")
+        print(f"❌ 실제 데이터 차트 생성 실패: {e}")
         return create_korean_charts()  # 폴백: 샘플 차트
 
 def create_real_news_table(news_data, registered_fonts):
     """실제 뉴스 데이터로 테이블 생성"""
     if not REPORTLAB_AVAILABLE or news_data is None or news_data.empty:
+        print("⚠️ 뉴스 데이터 없음, 샘플 뉴스 테이블 사용")
         return create_korean_news_table(registered_fonts)  # 폴백: 샘플 뉴스
     
     try:
+        print(f"📰 실제 뉴스 데이터 처리 중: {news_data.shape}")
+        print(f"📰 뉴스 컬럼: {list(news_data.columns)}")
+        
         # 뉴스 데이터에서 필요한 컬럼 찾기
         title_col = None
         date_col = None
@@ -209,26 +216,31 @@ def create_real_news_table(news_data, registered_fonts):
         
         for col in news_data.columns:
             col_lower = col.lower()
-            if '제목' in col or 'title' in col_lower:
+            if '제목' in col or 'title' in col_lower or 'headline' in col_lower:
                 title_col = col
-            elif '날짜' in col or 'date' in col_lower:
+            elif '날짜' in col or 'date' in col_lower or 'published' in col_lower:
                 date_col = col
-            elif '출처' in col or 'source' in col_lower:
+            elif '출처' in col or 'source' in col_lower or 'publisher' in col_lower:
                 source_col = col
+        
+        print(f"📰 컬럼 매핑: 제목={title_col}, 날짜={date_col}, 출처={source_col}")
         
         # 테이블 데이터 준비
         table_data = [['제목', '날짜', '출처']]
         
         # 뉴스 데이터 추가 (최대 5개)
-        for _, row in news_data.head(5).iterrows():
-            title = safe_str_convert(row[title_col] if title_col else "제목 없음")[:50]  # 제목 길이 제한
+        for idx, row in news_data.head(5).iterrows():
+            title = safe_str_convert(row[title_col] if title_col else f"뉴스 #{idx+1}")[:50]  # 제목 길이 제한
             date = safe_str_convert(row[date_col] if date_col else "날짜 없음")
             source = safe_str_convert(row[source_col] if source_col else "출처 없음")
             
             table_data.append([title, date, source])
         
         if len(table_data) <= 1:  # 헤더만 있는 경우
+            print("⚠️ 뉴스 데이터 처리 실패, 샘플 테이블 사용")
             return create_korean_news_table(registered_fonts)  # 폴백
+        
+        print(f"✅ 실제 뉴스 테이블 생성: {len(table_data)-1}개 뉴스")
         
         col_widths = [3.5*inch, 1.5*inch, 1.5*inch]
         table = Table(table_data, colWidths=col_widths)
@@ -250,8 +262,18 @@ def create_real_news_table(news_data, registered_fonts):
         return table
         
     except Exception as e:
-        print(f"실제 뉴스 테이블 생성 실패: {e}")
-        return create_korean_news_table(registered_fonts)  # 폴백# -*- coding: utf-8 -*-
+        print(f"❌ 실제 뉴스 테이블 생성 실패: {e}")
+        return create_korean_news_table(registered_fonts)  # 폴백
+
+# ✅ 기존 함수명 호환성 유지 + 실제 데이터 전달
+def create_enhanced_pdf_report(*args, **kwargs):
+    """기존 함수명 호환용 (메인 코드에서 사용) - 실제 데이터 전달"""
+    print("📄 create_enhanced_pdf_report 호출됨 (호환성 함수)")
+    result = generate_pdf_report(*args, **kwargs)
+    if result['success']:
+        return result['data']
+    else:
+        return result['error'].encode('utf-8')# -*- coding: utf-8 -*-
 """
 🎯 메인 코드 완벽 연동용 SK에너지 PDF 보고서 생성 모듈 (export.py)
 ✅ 이미 있는 NanumGothic 폰트 활용 + 메인 코드 호환 함수들 추가
@@ -546,8 +568,9 @@ def create_korean_pdf_report(
         else:
             print("⚠️ 실제 데이터가 없어서 샘플 데이터 사용")
         
-        # 차트 생성 (실제 데이터 우선)
+        # ✅ 강제 실제 데이터 체크 - 데이터가 있으면 반드시 사용하도록
         if use_real_data:
+            print("🎯 강제 실제 데이터 모드 활성화!")
             charts = create_real_data_charts(financial_data)
         else:
             charts = create_korean_charts()  # 샘플 차트
