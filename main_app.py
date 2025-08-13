@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import io
 
 import config
 from data.loader import DartAPICollector, QuarterlyDataCollector
@@ -12,6 +13,14 @@ from visualization.charts import (
     create_quarterly_trend_chart, create_gap_trend_chart, 
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
+
+# ✅ 차트 이미지 변환을 위한 추가 import
+try:
+    import plotly.io as pio
+    CHART_TO_IMAGE_AVAILABLE = True
+except ImportError:
+    CHART_TO_IMAGE_AVAILABLE = False
+    st.warning("⚠️ plotly.io를 사용할 수 없습니다. PDF 차트 생성이 제한될 수 있습니다.")
 
 # ✅ export 모듈 import 수정 - 올바른 함수명으로 변경
 try:
@@ -45,6 +54,18 @@ from news_collector import create_google_news_tab, GoogleNewsCollector
 
 st.set_page_config(page_title="SK Profit+: 손익 개선 전략 대시보드", page_icon="⚡", layout="wide")
 
+# ✅ 차트 이미지 변환 함수 추가
+def chart_to_image(fig):
+    """Plotly Figure → BytesIO PNG 변환"""
+    if not CHART_TO_IMAGE_AVAILABLE:
+        return None
+    try:
+        img_bytes = pio.to_image(fig, format="png", width=800, height=600)
+        return io.BytesIO(img_bytes)
+    except Exception as e:
+        st.warning(f"차트 이미지 변환 실패: {e}")
+        return None
+
 class SessionManager:
     """세션 상태 관리를 담당하는 클래스"""
     
@@ -58,7 +79,9 @@ class SessionManager:
             'selected_companies', 'manual_financial_data',
             'google_news_data', 'google_news_insight',
             # ✅ PDF 생성을 위한 추가 변수들
-            'chart_df', 'gap_analysis_df', 'insights_list'
+            'chart_df', 'gap_analysis_df', 'insights_list',
+            # ✅ 차트 이미지 저장을 위한 변수들 추가
+            'quarterly_trend_chart_img', 'gap_trend_chart_img', 'gap_chart_img'
         ]
         
         # 각 변수 초기화
@@ -153,6 +176,39 @@ def prepare_chart_data(financial_data):
     except Exception as e:
         st.warning(f"차트 데이터 준비 중 오류: {e}")
         return None
+
+# ✅ 차트 이미지들을 세션에 저장하는 함수 추가
+def save_chart_images(quarterly_df):
+    """차트들을 이미지로 변환해서 세션에 저장"""
+    if not PLOTLY_AVAILABLE or not CHART_TO_IMAGE_AVAILABLE:
+        return
+    
+    try:
+        # 분기별 트렌드 차트
+        if quarterly_df is not None and not quarterly_df.empty:
+            chart_input = quarterly_df.copy()
+            if '분기' in chart_input.columns:
+                chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
+            
+            # 분기별 재무지표 트렌드 차트 이미지 저장
+            quarterly_trend_fig = create_quarterly_trend_chart(chart_input)
+            if quarterly_trend_fig:
+                st.session_state.quarterly_trend_chart_img = chart_to_image(quarterly_trend_fig)
+            
+            # 갭 트렌드 차트 이미지 저장
+            gap_trend_fig = create_gap_trend_chart(chart_input)
+            if gap_trend_fig:
+                st.session_state.gap_trend_chart_img = chart_to_image(gap_trend_fig)
+        
+        # 갭 분석 차트 이미지 저장
+        if SessionManager.is_data_available('gap_analysis_df'):
+            gap_analysis_df = st.session_state.gap_analysis_df
+            gap_fig = create_gap_chart(gap_analysis_df)
+            if gap_fig:
+                st.session_state.gap_chart_img = chart_to_image(gap_fig)
+                
+    except Exception as e:
+        st.warning(f"차트 이미지 저장 중 오류: {e}")
 
 def sort_quarterly_by_quarter(df: pd.DataFrame) -> pd.DataFrame:
     """분기별 데이터 정렬"""
@@ -340,12 +396,16 @@ def render_financial_analysis_tab():
                     financial_data = processor.merge_company_data(dataframes)
                     SessionManager.save_data('financial_data', financial_data)
                     
+                    quarterly_data = None
                     if q_data_list:
                         quarterly_data = pd.concat(q_data_list, ignore_index=True)
                         # 분기별 데이터 정렬
                         quarterly_data = sort_quarterly_by_quarter(quarterly_data)
                         SessionManager.save_data('quarterly_data', quarterly_data)
                         st.success(f"✅ 총 {len(q_data_list)}개 회사의 분기별 데이터 수집 완료")
+                    
+                    # ✅ 차트 이미지들을 세션에 저장
+                    save_chart_images(quarterly_data)
                     
                     # AI 인사이트 생성
                     openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
@@ -484,6 +544,9 @@ def render_manual_upload_tab():
                         manual_data = processor.merge_company_data(dataframes)
                         SessionManager.save_data('manual_financial_data', manual_data)
                         SessionManager.save_data('financial_data', manual_data)
+
+                        # ✅ 수동 업로드에서도 차트 이미지 저장 (분기별 데이터는 없을 수 있음)
+                        save_chart_images(None)
 
                         # AI 인사이트 생성 (DART 자동 수집과 동일한 프롬프트 사용)
                         with st.spinner("🤖 AI 인사이트 생성 중..."):
@@ -648,13 +711,20 @@ def render_report_generation_tab():
         elif SessionManager.is_data_available('manual_financial_data'):
             financial_data_for_report = st.session_state.manual_financial_data
 
-        # ✅ PDF 생성 섹션
+        # ✅ PDF 생성 섹션 - 차트 이미지 포함
         if EXPORT_AVAILABLE:
             st.markdown("---")
-            st.markdown("**🚀 한글 PDF 생성 (NanumGothic 폰트)**")
+            st.markdown("**🚀 한글 PDF 생성 (NanumGothic 폰트) + 차트 이미지**")
             
-            # ✅ 버튼을 직접 만들고 클릭 처리
+            # ✅ 버튼을 직접 만들고 클릭 처리 - 차트 이미지들도 전달
             if st.button("📄 PDF 보고서 생성", type="primary", key="advanced_pdf_btn"):
+                # ✅ 차트 이미지들을 수집해서 전달
+                chart_images = {
+                    'quarterly_trend': st.session_state.get('quarterly_trend_chart_img'),
+                    'gap_trend': st.session_state.get('gap_trend_chart_img'),
+                    'gap_chart': st.session_state.get('gap_chart_img')
+                }
+                
                 success = handle_pdf_generation_button(
                     button_clicked=True,
                     financial_data=financial_data_for_report,
@@ -663,6 +733,7 @@ def render_report_generation_tab():
                     quarterly_df=st.session_state.get('quarterly_data'),
                     chart_df=st.session_state.get('chart_df'),
                     gap_analysis_df=st.session_state.get('gap_analysis_df'),
+                    chart_images=chart_images,  # ✅ 차트 이미지들 추가
                     report_target=report_target.strip() or "SK이노베이션 경영진",
                     report_author=report_author.strip() or "AI 분석 시스템",
                     show_footer=show_footer
@@ -721,6 +792,13 @@ def main():
         else:
             st.warning("⚠️ PDF/Excel 생성 불가")
             st.caption("export.py 및 reportlab 확인 필요")
+            
+        # ✅ 차트 이미지 변환 상태 추가
+        if CHART_TO_IMAGE_AVAILABLE:
+            st.success("✅ 차트 이미지 변환 가능")
+        else:
+            st.warning("⚠️ 차트 이미지 변환 불가")
+            st.caption("plotly.io 및 kaleido 확인 필요")
             
         # 데이터 상태 요약
         st.header("📋 데이터 현황")
