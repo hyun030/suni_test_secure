@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-🎯 SK에너지 PDF 보고서 생성 모듈 (export.py) - 정리된 버전
-✅ 실제 데이터 우선 사용 + 코드 중복 제거
+🎯 SK에너지 PDF 보고서 생성 모듈 (export.py) - 차트 이미지 지원 버전
+✅ 실제 데이터 우선 사용 + 차트 이미지 포함
 """
 
 import io
@@ -514,7 +514,7 @@ def create_sample_news_table(registered_fonts):
         return None
 
 # ===========================================
-# 🖼️ 차트 이미지 변환
+# 🖼️ 차트 이미지 변환 (✅ 메인에서 전달받은 이미지 사용)
 # ===========================================
 
 def safe_create_chart_image(fig, width=480, height=320):
@@ -545,6 +545,46 @@ def safe_create_chart_image(fig, width=480, height=320):
             pass
         return None
 
+# ✅ 메인에서 전달받은 차트 이미지를 PDF에 삽입하는 함수
+def add_chart_images_to_story(story, chart_images, body_style):
+    """메인에서 전달받은 차트 이미지들을 PDF에 추가"""
+    if not chart_images:
+        return
+    
+    chart_titles = {
+        'quarterly_trend': '분기별 재무지표 트렌드',
+        'gap_trend': '갭 트렌드 분석',
+        'gap_chart': 'SK에너지 vs 경쟁사 비교'
+    }
+    
+    charts_added = 0
+    for chart_key, chart_title in chart_titles.items():
+        if chart_images.get(chart_key):
+            try:
+                # BytesIO 이미지를 ReportLab Image로 변환
+                chart_img_data = chart_images[chart_key]
+                if hasattr(chart_img_data, 'seek'):
+                    chart_img_data.seek(0)  # BytesIO 포인터 리셋
+                
+                # ReportLab Image 생성
+                img = RLImage(chart_img_data, width=450, height=270)
+                
+                # PDF에 추가
+                story.append(Paragraph(f"▶ {chart_title} (실제 데이터 기반 차트)", body_style))
+                story.append(img)
+                story.append(Spacer(1, 10))
+                charts_added += 1
+                
+                print(f"✅ 차트 이미지 추가: {chart_title}")
+                
+            except Exception as e:
+                print(f"❌ 차트 이미지 추가 실패 ({chart_title}): {e}")
+    
+    if charts_added > 0:
+        print(f"✅ 총 {charts_added}개 차트 이미지가 PDF에 추가됨")
+    else:
+        print("⚠️ 추가된 차트 이미지 없음")
+
 
 # ===========================================
 # 📄 PDF 보고서 생성 (메인 함수)
@@ -557,6 +597,7 @@ def generate_pdf_report(
     quarterly_df=None,
     chart_df=None,
     gap_analysis_df=None,
+    chart_images=None,  # ✅ 새로 추가된 파라미터
     report_target="SK이노베이션 경영진",
     report_author="AI 분석 시스템",
     show_footer=True,
@@ -566,9 +607,10 @@ def generate_pdf_report(
     PDF 보고서 생성 (통합 메인 함수)
     - 실제 데이터 우선 사용
     - 세션 상태에서 자동 데이터 수집
+    - ✅ 메인에서 전달받은 차트 이미지 포함
     - 폴백으로 샘플 데이터 사용
     """
-    print(f"🚀 PDF 보고서 생성 시작")
+    print(f"🚀 PDF 보고서 생성 시작 (차트 이미지 포함)")
     
     if not REPORTLAB_AVAILABLE:
         return {
@@ -595,8 +637,9 @@ def generate_pdf_report(
         has_real_news = (news_data is not None and 
                         not (hasattr(news_data, 'empty') and news_data.empty))
         has_insights = insights and len(insights) > 0
+        has_chart_images = chart_images and any(chart_images.values())  # ✅ 차트 이미지 확인
         
-        print(f"📊 데이터 상태: 재무={has_real_financial}, 뉴스={has_real_news}, 인사이트={has_insights}")
+        print(f"📊 데이터 상태: 재무={has_real_financial}, 뉴스={has_real_news}, 인사이트={has_insights}, 차트이미지={has_chart_images}")
         
         # 3. 폰트 등록
         registered_fonts = register_fonts()
@@ -709,21 +752,27 @@ def generate_pdf_report(
         
         story.append(Spacer(1, 16))
         
-        # 차트 추가
-        chart_added = False
-        for chart_name, chart_title in [('revenue_comparison', '매출액 비교'), 
-                                       ('roe_comparison', 'ROE 성과 비교')]:
-            if charts.get(chart_name):
-                chart_img = safe_create_chart_image(charts[chart_name], width=450, height=270)
-                if chart_img:
-                    data_type = "실제 DART 데이터" if has_real_financial else "샘플 데이터"
-                    story.append(Paragraph(f"▶ {chart_title} ({data_type})", body_style))
-                    story.append(chart_img)
-                    story.append(Spacer(1, 10))
-                    chart_added = True
-        
-        if not chart_added:
-            story.append(Paragraph("📊 차트를 생성할 수 없습니다.", body_style))
+        # ✅ 메인에서 전달받은 차트 이미지 우선 사용
+        if has_chart_images:
+            story.append(Paragraph("◆ 차트 분석 (실제 데이터 기반)", heading_style))
+            story.append(Spacer(1, 10))
+            add_chart_images_to_story(story, chart_images, body_style)
+        else:
+            # 기존 matplotlib 차트 사용
+            chart_added = False
+            for chart_name, chart_title in [('revenue_comparison', '매출액 비교'), 
+                                           ('roe_comparison', 'ROE 성과 비교')]:
+                if charts.get(chart_name):
+                    chart_img = safe_create_chart_image(charts[chart_name], width=450, height=270)
+                    if chart_img:
+                        data_type = "실제 DART 데이터" if has_real_financial else "샘플 데이터"
+                        story.append(Paragraph(f"▶ {chart_title} ({data_type})", body_style))
+                        story.append(chart_img)
+                        story.append(Spacer(1, 10))
+                        chart_added = True
+            
+            if not chart_added:
+                story.append(Paragraph("📊 차트를 생성할 수 없습니다.", body_style))
         
         section_counter += 1
         
@@ -819,6 +868,8 @@ def generate_pdf_report(
             data_status.append("실제 뉴스데이터")
         if has_insights:
             data_status.append("AI 인사이트")
+        if has_chart_images:
+            data_status.append("실제 차트이미지")  # ✅ 추가
         
         message = f"✅ PDF 생성 완료! ({', '.join(data_status) if data_status else '샘플 데이터'} 사용)"
         
@@ -919,6 +970,7 @@ def handle_pdf_generation_button(
     quarterly_df=None,
     chart_df=None,
     gap_analysis_df=None,
+    chart_images=None,  # ✅ 새로 추가된 파라미터
     report_target="SK이노베이션 경영진",
     report_author="AI 분석 시스템",
     show_footer=True,
@@ -926,11 +978,12 @@ def handle_pdf_generation_button(
 ):
     """
     메인 코드의 버튼 클릭시 호출하는 함수
+    ✅ chart_images 파라미터 추가
     """
     if not button_clicked:
         return None
         
-    with st.spinner("한글 PDF 생성 중... (실제 데이터 우선 사용)"):
+    with st.spinner("한글 PDF 생성 중... (실제 데이터 + 차트 이미지 포함)"):
         result = generate_pdf_report(
             financial_data=financial_data,
             news_data=news_data,
@@ -938,6 +991,7 @@ def handle_pdf_generation_button(
             quarterly_df=quarterly_df,
             chart_df=chart_df,
             gap_analysis_df=gap_analysis_df,
+            chart_images=chart_images,  # ✅ 차트 이미지 전달
             report_target=report_target,
             report_author=report_author,
             show_footer=show_footer,
@@ -955,6 +1009,7 @@ def handle_pdf_generation_button(
             )
             st.success(result['message'])
             st.info("🔤 **폰트**: fonts 폴더의 NanumGothic 폰트 사용")
+            st.info("📊 **차트**: Plotly 차트를 이미지로 변환하여 포함")  # ✅ 추가
             
             # 세션에 저장
             st.session_state.generated_file = result['data']
@@ -1039,7 +1094,7 @@ def test_integration():
 # ===========================================
 
 if __name__ == "__main__":
-    print("🚀 정리된 SK에너지 PDF 보고서 생성 모듈")
+    print("🚀 정리된 SK에너지 PDF 보고서 생성 모듈 (차트 이미지 지원)")
     print("=" * 50)
     
     # 환경 확인
@@ -1051,7 +1106,7 @@ if __name__ == "__main__":
     try:
         if 'streamlit' in st.__module__:
             print("🌐 Streamlit 환경에서 실행")
-            st.title("🏢 SK에너지 분석 보고서 생성기 (정리된 버전)")
+            st.title("🏢 SK에너지 분석 보고서 생성기 (차트 이미지 지원)")
             st.markdown("---")
             
             # 기본 정보 입력
@@ -1088,10 +1143,11 @@ if __name__ == "__main__":
 
 from export import handle_pdf_generation_button, generate_pdf_report
 
-# 방법 1: 버튼 핸들러
+# 방법 1: 버튼 핸들러 (차트 이미지 포함)
+chart_images = {'quarterly_trend': img1, 'gap_chart': img2}
 if st.button("PDF 생성"):
-    handle_pdf_generation_button(True, financial_data=df, news_data=news_df)
+    handle_pdf_generation_button(True, financial_data=df, chart_images=chart_images)
 
 # 방법 2: 직접 생성
-result = generate_pdf_report(financial_data=df, news_data=news_df, insights=insights)
+result = generate_pdf_report(financial_data=df, chart_images=chart_images)
     """)
