@@ -1,4 +1,257 @@
-# -*- coding: utf-8 -*-
+# ✅ 실제 데이터 처리 함수들 추가
+def generate_real_summary(financial_data):
+    """실제 재무 데이터를 기반으로 요약 생성"""
+    try:
+        if financial_data is None or financial_data.empty:
+            return "재무 데이터가 없어 요약을 생성할 수 없습니다."
+        
+        # SK에너지 데이터 찾기
+        sk_col = None
+        for col in financial_data.columns:
+            if 'SK' in col and col != '구분':
+                sk_col = col
+                break
+        
+        if sk_col is None:
+            return "SK에너지 데이터를 찾을 수 없습니다."
+        
+        # 주요 지표 추출
+        summary_parts = []
+        
+        # 매출액
+        revenue_row = financial_data[financial_data['구분'].str.contains('매출', na=False)]
+        if not revenue_row.empty:
+            revenue = safe_str_convert(revenue_row.iloc[0][sk_col])
+            summary_parts.append(f"매출액 {revenue}")
+        
+        # 영업이익률
+        profit_row = financial_data[financial_data['구분'].str.contains('영업이익률', na=False)]
+        if not profit_row.empty:
+            profit = safe_str_convert(profit_row.iloc[0][sk_col])
+            summary_parts.append(f"영업이익률 {profit}")
+        
+        # ROE
+        roe_row = financial_data[financial_data['구분'].str.contains('ROE', na=False)]
+        if not roe_row.empty:
+            roe = safe_str_convert(roe_row.iloc[0][sk_col])
+            summary_parts.append(f"ROE {roe}")
+        
+        if summary_parts:
+            summary = f"SK에너지는 {', '.join(summary_parts)}를 기록하며 안정적인 성과를 보이고 있습니다. 수집된 실제 데이터를 바탕으로 한 분석 결과입니다."
+        else:
+            summary = "수집된 실제 재무 데이터를 바탕으로 분석한 결과입니다."
+        
+        return summary
+        
+    except Exception as e:
+        print(f"요약 생성 오류: {e}")
+        return "실제 데이터를 기반으로 분석했으나 요약 생성 중 오류가 발생했습니다."
+
+def create_real_data_table(financial_data, registered_fonts):
+    """실제 재무 데이터로 테이블 생성"""
+    if not REPORTLAB_AVAILABLE or financial_data is None or financial_data.empty:
+        return None
+    
+    try:
+        # 표시용 컬럼만 사용 (원시값 제외)
+        display_cols = [col for col in financial_data.columns if not col.endswith('_원시값')]
+        
+        # 테이블 데이터 준비
+        table_data = []
+        
+        # 헤더 추가
+        table_data.append(display_cols)
+        
+        # 데이터 행 추가 (최대 10개 행만)
+        for _, row in financial_data.head(10).iterrows():
+            row_data = []
+            for col in display_cols:
+                value = safe_str_convert(row[col])
+                row_data.append(value[:20] if len(value) > 20 else value)  # 긴 텍스트 자르기
+            table_data.append(row_data)
+        
+        if len(table_data) <= 1:  # 헤더만 있는 경우
+            return None
+        
+        # 컬럼 너비 계산
+        col_count = len(display_cols)
+        col_width = 6.5 * inch / col_count if col_count > 0 else 1 * inch
+        
+        table = Table(table_data, colWidths=[col_width] * col_count)
+        
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E31E24')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), registered_fonts.get('KoreanBold', 'Helvetica-Bold')),
+            ('FONTNAME', (0, 1), (-1, -1), registered_fonts.get('Korean', 'Helvetica')),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        
+        return table
+        
+    except Exception as e:
+        print(f"실제 데이터 테이블 생성 실패: {e}")
+        return None
+
+def create_real_data_charts(financial_data):
+    """실제 재무 데이터로 차트 생성"""
+    charts = {}
+    
+    try:
+        if financial_data is None or financial_data.empty:
+            return create_korean_charts()  # 폴백: 샘플 차트
+        
+        # matplotlib 한글 폰트 설정
+        font_paths = get_font_paths()
+        if "Korean" in font_paths:
+            plt.rcParams['font.family'] = ['NanumGothic']
+        
+        # 회사 컬럼 찾기 (구분, _원시값 제외)
+        company_cols = [col for col in financial_data.columns 
+                       if col != '구분' and not col.endswith('_원시값')]
+        
+        if len(company_cols) < 2:
+            return create_korean_charts()  # 폴백: 샘플 차트
+        
+        # 1. 매출 비교 차트 (실제 데이터)
+        revenue_row = financial_data[financial_data['구분'].str.contains('매출', na=False)]
+        if not revenue_row.empty:
+            fig1, ax1 = plt.subplots(figsize=(10, 6))
+            fig1.patch.set_facecolor('white')
+            
+            companies = company_cols[:4]  # 최대 4개 회사
+            revenues = []
+            
+            for company in companies:
+                try:
+                    value_str = safe_str_convert(revenue_row.iloc[0][company])
+                    # 숫자 추출
+                    clean_value = value_str.replace('조원', '').replace(',', '').replace('%', '')
+                    revenues.append(float(clean_value))
+                except:
+                    revenues.append(0)
+            
+            colors_list = ['#E31E24', '#FF6B6B', '#4ECDC4', '#45B7D1'][:len(companies)]
+            
+            bars = ax1.bar(companies, revenues, color=colors_list, alpha=0.8, width=0.6)
+            ax1.set_title('매출액 비교 (실제 데이터)', fontsize=14, pad=20, weight='bold')
+            ax1.set_ylabel('매출액', fontsize=12, weight='bold')
+            ax1.grid(True, alpha=0.3, axis='y')
+            
+            # 값 표시
+            for bar, value in zip(bars, revenues):
+                height = bar.get_height()
+                ax1.text(bar.get_x() + bar.get_width()/2., height + max(revenues)*0.01,
+                        f'{value:.1f}', ha='center', va='bottom', fontsize=11, weight='bold')
+            
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            charts['revenue_comparison'] = fig1
+        
+        # 2. ROE 비교 차트 (실제 데이터)
+        roe_row = financial_data[financial_data['구분'].str.contains('ROE', na=False)]
+        if not roe_row.empty:
+            fig2, ax2 = plt.subplots(figsize=(10, 6))
+            fig2.patch.set_facecolor('white')
+            
+            companies = company_cols[:4]
+            roe_values = []
+            
+            for company in companies:
+                try:
+                    value_str = safe_str_convert(roe_row.iloc[0][company])
+                    clean_value = value_str.replace('%', '').replace(',', '')
+                    roe_values.append(float(clean_value))
+                except:
+                    roe_values.append(0)
+            
+            bars = ax2.bar(companies, roe_values, color='#E31E24', alpha=0.7)
+            ax2.set_title('ROE 비교 (실제 데이터)', fontsize=14, pad=20, weight='bold')
+            ax2.set_ylabel('ROE (%)', fontsize=12, weight='bold')
+            ax2.grid(True, alpha=0.3, axis='y')
+            
+            # 값 표시
+            for bar, value in zip(bars, roe_values):
+                height = bar.get_height()
+                ax2.text(bar.get_x() + bar.get_width()/2., height + max(roe_values)*0.01,
+                        f'{value:.1f}%', ha='center', va='bottom', fontsize=11, weight='bold')
+            
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            charts['roe_comparison'] = fig2
+        
+        # 차트가 없으면 샘플 차트로 폴백
+        if not charts:
+            return create_korean_charts()
+        
+        return charts
+        
+    except Exception as e:
+        print(f"실제 데이터 차트 생성 실패: {e}")
+        return create_korean_charts()  # 폴백: 샘플 차트
+
+def create_real_news_table(news_data, registered_fonts):
+    """실제 뉴스 데이터로 테이블 생성"""
+    if not REPORTLAB_AVAILABLE or news_data is None or news_data.empty:
+        return create_korean_news_table(registered_fonts)  # 폴백: 샘플 뉴스
+    
+    try:
+        # 뉴스 데이터에서 필요한 컬럼 찾기
+        title_col = None
+        date_col = None
+        source_col = None
+        
+        for col in news_data.columns:
+            col_lower = col.lower()
+            if '제목' in col or 'title' in col_lower:
+                title_col = col
+            elif '날짜' in col or 'date' in col_lower:
+                date_col = col
+            elif '출처' in col or 'source' in col_lower:
+                source_col = col
+        
+        # 테이블 데이터 준비
+        table_data = [['제목', '날짜', '출처']]
+        
+        # 뉴스 데이터 추가 (최대 5개)
+        for _, row in news_data.head(5).iterrows():
+            title = safe_str_convert(row[title_col] if title_col else "제목 없음")[:50]  # 제목 길이 제한
+            date = safe_str_convert(row[date_col] if date_col else "날짜 없음")
+            source = safe_str_convert(row[source_col] if source_col else "출처 없음")
+            
+            table_data.append([title, date, source])
+        
+        if len(table_data) <= 1:  # 헤더만 있는 경우
+            return create_korean_news_table(registered_fonts)  # 폴백
+        
+        col_widths = [3.5*inch, 1.5*inch, 1.5*inch]
+        table = Table(table_data, colWidths=col_widths)
+        
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4CAF50')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), registered_fonts.get('KoreanBold', 'Helvetica-Bold')),
+            ('FONTNAME', (0, 1), (-1, -1), registered_fonts.get('Korean', 'Helvetica')),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.lightgrey),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        
+        return table
+        
+    except Exception as e:
+        print(f"실제 뉴스 테이블 생성 실패: {e}")
+        return create_korean_news_table(registered_fonts)  # 폴백# -*- coding: utf-8 -*-
 """
 🎯 메인 코드 완벽 연동용 SK에너지 PDF 보고서 생성 모듈 (export.py)
 ✅ 이미 있는 NanumGothic 폰트 활용 + 메인 코드 호환 함수들 추가
@@ -260,8 +513,18 @@ def create_korean_news_table(registered_fonts):
         print(f"뉴스 테이블 생성 실패: {e}")
         return None
 
-def create_korean_pdf_report():
-    """한글 PDF 보고서 생성 (기존 폰트 사용)"""
+def create_korean_pdf_report(
+    financial_data=None,
+    news_data=None,
+    insights=None,
+    quarterly_df=None,
+    chart_df=None,
+    gap_analysis_df=None,
+    report_target="SK이노베이션 경영진",
+    report_author="AI 분석 시스템",
+    show_footer=True
+):
+    """한글 PDF 보고서 생성 (실제 데이터 사용)"""
     
     if not REPORTLAB_AVAILABLE:
         return "ReportLab not available".encode('utf-8')
@@ -270,8 +533,24 @@ def create_korean_pdf_report():
         # 폰트 등록
         registered_fonts = register_fonts()
         
-        # 차트 생성
-        charts = create_korean_charts()
+        # ✅ 실제 데이터 사용 여부 결정
+        use_real_data = (financial_data is not None and 
+                        not (hasattr(financial_data, 'empty') and financial_data.empty))
+        
+        print(f"🔍 실제 데이터 사용: {use_real_data}")
+        if use_real_data:
+            print(f"📊 전달받은 데이터: {financial_data.shape if hasattr(financial_data, 'shape') else 'N/A'}")
+            print(f"📋 컬럼: {list(financial_data.columns) if hasattr(financial_data, 'columns') else 'N/A'}")
+            print(f"📈 뉴스 데이터: {news_data is not None and not news_data.empty if news_data is not None else False}")
+            print(f"🤖 인사이트 개수: {len(insights) if insights else 0}")
+        else:
+            print("⚠️ 실제 데이터가 없어서 샘플 데이터 사용")
+        
+        # 차트 생성 (실제 데이터 우선)
+        if use_real_data:
+            charts = create_real_data_charts(financial_data)
+        else:
+            charts = create_korean_charts()  # 샘플 차트
         
         # 스타일 정의
         title_style = ParagraphStyle(
@@ -332,17 +611,19 @@ def create_korean_pdf_report():
         
         current_date = datetime.now().strftime('%Y년 %m월 %d일')
         story.append(Paragraph(f"보고일자: {current_date}", info_style))
-        story.append(Paragraph("보고대상: SK이노베이션 경영진", info_style))
-        story.append(Paragraph("보고자: AI 분석 시스템", info_style))
+        story.append(Paragraph(f"보고대상: {report_target}", info_style))
+        story.append(Paragraph(f"보고자: {report_author}", info_style))
         story.append(Spacer(1, 30))
         
-        # 핵심 요약
+        # ✅ 실제 데이터 기반 핵심 요약
         story.append(Paragraph("◆ 핵심 요약", heading_style))
         story.append(Spacer(1, 10))
         
-        summary_text = """SK에너지는 매출액 15.2조원으로 업계 1위를 유지하며, 영업이익률 5.6%와 ROE 12.3%를 기록하여 
-        경쟁사 대비 우수한 성과를 보이고 있습니다. 최근 3분기 실적이 시장 기대치를 상회하며 긍정적 전망을 보여주고 있으나, 
-        에너지 전환 정책에 대한 전략적 대응이 필요한 상황입니다."""
+        if use_real_data:
+            summary_text = generate_real_summary(financial_data)
+        else:
+            summary_text = """SK에너지는 매출액 15.2조원으로 업계 1위를 유지하며, 영업이익률 5.6%와 ROE 12.3%를 기록하여 
+            경쟁사 대비 우수한 성과를 보이고 있습니다. (샘플 데이터 기반)"""
         
         story.append(Paragraph(summary_text, body_style))
         story.append(Spacer(1, 20))
@@ -351,17 +632,19 @@ def create_korean_pdf_report():
         story.append(Paragraph("1. 재무분석 결과", heading_style))
         story.append(Spacer(1, 10))
         
-        # 1-1. 주요 재무지표
+        # 1-1. 주요 재무지표 테이블
         story.append(Paragraph("1-1. 주요 재무지표", heading_style))
         story.append(Spacer(1, 6))
         
-        financial_table = create_korean_table(registered_fonts)
+        if use_real_data:
+            financial_table = create_real_data_table(financial_data, registered_fonts)
+        else:
+            financial_table = create_korean_table(registered_fonts)
+        
         if financial_table:
             story.append(financial_table)
         else:
-            story.append(Paragraph("• SK에너지 매출액: 15.2조원 (업계 1위)", body_style))
-            story.append(Paragraph("• 영업이익률: 5.6% (경쟁사 대비 우위)", body_style))
-            story.append(Paragraph("• ROE: 12.3%, ROA: 8.1% (우수한 수익성)", body_style))
+            story.append(Paragraph("• 재무 데이터 테이블을 생성할 수 없습니다.", body_style))
         
         story.append(Spacer(1, 16))
         
@@ -369,84 +652,67 @@ def create_korean_pdf_report():
         story.append(Paragraph("1-2. 차트 분석", heading_style))
         story.append(Spacer(1, 8))
         
-        # 매출 비교 차트
-        if charts.get('revenue_comparison'):
-            revenue_img = safe_create_chart_image(charts['revenue_comparison'], width=450, height=270)
-            if revenue_img:
-                story.append(Paragraph("▶ 매출액 비교", body_style))
-                story.append(revenue_img)
-                story.append(Spacer(1, 10))
-        
-        # ROE 비교 차트
-        if charts.get('roe_comparison'):
-            roe_img = safe_create_chart_image(charts['roe_comparison'], width=450, height=270)
-            if roe_img:
-                story.append(Paragraph("▶ ROE 성과 비교", body_style))
-                story.append(roe_img)
-                story.append(Spacer(1, 16))
-        
-        # 차트가 없는 경우 텍스트로 대체
-        if not charts.get('revenue_comparison') and not charts.get('roe_comparison'):
-            story.append(Paragraph("📊 매출 분석: SK에너지가 15.2조원으로 경쟁사 대비 우위를 보입니다", body_style))
-            story.append(Paragraph("📈 수익성: ROE 12.3%로 S-Oil 대비 0.5%p, GS칼텍스 대비 1.8%p 우위", body_style))
-            story.append(Spacer(1, 16))
+        # 차트 표시
+        for chart_name, chart_title in [('revenue_comparison', '매출액 비교'), 
+                                       ('roe_comparison', 'ROE 성과 비교')]:
+            if charts.get(chart_name):
+                chart_img = safe_create_chart_image(charts[chart_name], width=450, height=270)
+                if chart_img:
+                    story.append(Paragraph(f"▶ {chart_title}", body_style))
+                    story.append(chart_img)
+                    story.append(Spacer(1, 10))
         
         story.append(PageBreak())
         
-        # 2. 뉴스 분석 결과
+        # 2. 뉴스 분석 결과 (실제 뉴스 데이터 사용)
         story.append(Paragraph("2. 뉴스 분석 결과", heading_style))
         story.append(Spacer(1, 10))
         
-        # 2-1. 주요 뉴스
         story.append(Paragraph("2-1. 주요 뉴스", heading_style))
         story.append(Spacer(1, 6))
         
-        news_table = create_korean_news_table(registered_fonts)
+        if news_data is not None and not news_data.empty:
+            news_table = create_real_news_table(news_data, registered_fonts)
+        else:
+            news_table = create_korean_news_table(registered_fonts)
+        
         if news_table:
             story.append(news_table)
         else:
-            story.append(Paragraph("📰 주요 뉴스:", body_style))
-            story.append(Paragraph("• SK에너지, 3분기 실적 시장 기대치 상회 (매일경제, 2024-11-01)", body_style))
-            story.append(Paragraph("• 정유업계, 원유가 하락으로 마진 개선 기대 (한국경제, 2024-10-28)", body_style))
+            story.append(Paragraph("📰 뉴스 데이터가 없습니다.", body_style))
         
         story.append(Spacer(1, 16))
         
-        # 3. 전략 제언
-        story.append(Paragraph("3. 전략 제언", heading_style))
+        # 3. AI 인사이트 (실제 인사이트 사용)
+        story.append(Paragraph("3. AI 인사이트", heading_style))
         story.append(Spacer(1, 10))
         
-        strategy_content = [
-            "◆ 단기 전략 (1-2년)",
-            "• 운영 효율성 극대화를 통한 마진 확대에 집중",
-            "• 현금 창출 능력 강화로 안정적 배당 및 투자 재원 확보",
-            "",
-            "◆ 중기 전략 (3-5년)",
-            "• 사업 포트폴리오 다각화 및 신사업 진출 검토",
-            "• 디지털 전환과 공정 혁신을 통한 경쟁력 강화",
-            "",
-            "◆ 장기 전략 (5년 이상)",
-            "• 에너지 전환에 대비한 친환경 사업 확대",
-            "• ESG 경영 체계 구축 및 지속가능한 성장 기반 마련"
-        ]
-        
-        for content in strategy_content:
-            if content.strip():
-                story.append(Paragraph(content, body_style))
-            else:
-                story.append(Spacer(1, 6))
+        if insights and len(insights) > 0:
+            for i, insight in enumerate(insights, 1):
+                if insight and insight.strip():
+                    story.append(Paragraph(f"3-{i}. AI 분석 결과", heading_style))
+                    # 인사이트를 적절한 길이로 분할
+                    insight_paragraphs = insight.split('\n\n')
+                    for para in insight_paragraphs:
+                        if para.strip():
+                            story.append(Paragraph(para.strip(), body_style))
+                    story.append(Spacer(1, 10))
+        else:
+            story.append(Paragraph("AI 인사이트가 생성되지 않았습니다.", body_style))
         
         # Footer
         story.append(Spacer(1, 30))
-        footer_style = ParagraphStyle(
-            'Footer',
-            fontName=registered_fonts.get('Korean', 'Helvetica'),
-            fontSize=8,
-            alignment=1,
-            textColor=colors.HexColor('#7F8C8D')
-        )
-        
-        story.append(Paragraph("※ 본 보고서는 AI 분석 시스템에 의해 생성되었습니다", footer_style))
-        story.append(Paragraph(f"생성일시: {datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')}", footer_style))
+        if show_footer:
+            footer_style = ParagraphStyle(
+                'Footer',
+                fontName=registered_fonts.get('Korean', 'Helvetica'),
+                fontSize=8,
+                alignment=1,
+                textColor=colors.HexColor('#7F8C8D')
+            )
+            
+            story.append(Paragraph("※ 본 보고서는 AI 분석 시스템에 의해 생성되었습니다", footer_style))
+            story.append(Paragraph(f"생성일시: {datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')}", footer_style))
         
         # PDF 빌드
         doc.build(story)
@@ -455,14 +721,14 @@ def create_korean_pdf_report():
         pdf_data = buffer.getvalue()
         buffer.close()
         
-        print(f"✅ 한글 PDF 생성 완료 - {len(pdf_data)} bytes")
+        print(f"✅ 실제 데이터 PDF 생성 완료 - {len(pdf_data)} bytes")
         return pdf_data
         
     except Exception as e:
-        print(f"❌ 한글 PDF 생성 실패: {e}")
+        print(f"❌ PDF 생성 실패: {e}")
         import traceback
         traceback.print_exc()
-        return f"Korean PDF generation failed: {str(e)}".encode('utf-8')
+        return f"PDF generation failed: {str(e)}".encode('utf-8')
 
 # ===========================================
 # 🔥 메인 코드 연동용 함수들 (버튼 중복 해결)
@@ -489,8 +755,18 @@ def generate_pdf_report(
     print(f"  - report_target: {report_target}")
     
     try:
-        # PDF 생성
-        pdf_data = create_korean_pdf_report()
+        # ✅ 실제 데이터를 파라미터로 전달하여 PDF 생성
+        pdf_data = create_korean_pdf_report(
+            financial_data=financial_data,
+            news_data=news_data,
+            insights=insights,
+            quarterly_df=quarterly_df,
+            chart_df=chart_df,
+            gap_analysis_df=gap_analysis_df,
+            report_target=report_target,
+            report_author=report_author,
+            show_footer=show_footer
+        )
         
         if isinstance(pdf_data, bytes) and len(pdf_data) > 1000:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -501,7 +777,7 @@ def generate_pdf_report(
                 'data': pdf_data,
                 'filename': filename,
                 'mime': 'application/pdf',
-                'message': '✅ 한글 PDF 생성 완료!'
+                'message': '✅ 실제 데이터 PDF 생성 완료!'
             }
         else:
             return {
