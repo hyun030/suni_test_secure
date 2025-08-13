@@ -16,7 +16,7 @@ from visualization.charts import (
 # ✅ export 모듈 import 수정 - 올바른 함수명으로 변경
 try:
     # 현재 디렉토리에 export.py가 있는 경우
-    from export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
+    from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
     EXPORT_AVAILABLE = True
     st.success("✅ PDF/Excel 생성 모듈 로드 성공")
 except ImportError:
