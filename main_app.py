@@ -13,18 +13,32 @@ from visualization.charts import (
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
 
-# export 모듈 안전한 import (수정)
+# ✅ export 모듈 import 수정 - 올바른 경로로 변경
 try:
-    from util.export import create_excel_report, create_enhanced_pdf_report
+    # 현재 디렉토리에 export.py가 있는 경우
+    from export import create_enhanced_pdf_report, create_excel_report, create_pdf_download_button
     EXPORT_AVAILABLE = True
+    st.success("✅ PDF/Excel 생성 모듈 로드 성공")
 except ImportError:
-    # import 실패 시 대체 함수들 생성
-    def create_excel_report(*args, **kwargs):
-        return b"Excel report generation is in progress."
-    
-    def create_enhanced_pdf_report(*args, **kwargs):
-        return b"PDF report generation is in progress."
-    EXPORT_AVAILABLE = False
+    try:
+        # util 폴더에 있는 경우
+        from util.export import create_enhanced_pdf_report, create_excel_report, create_pdf_download_button
+        EXPORT_AVAILABLE = True
+        st.success("✅ PDF/Excel 생성 모듈 로드 성공 (util 경로)")
+    except ImportError as e:
+        # import 실패 시 대체 함수들 생성
+        def create_excel_report(*args, **kwargs):
+            return b"Excel report generation is not available."
+        
+        def create_enhanced_pdf_report(*args, **kwargs):
+            return b"PDF report generation is not available."
+        
+        def create_pdf_download_button(*args, **kwargs):
+            st.error("❌ PDF 생성 기능을 사용할 수 없습니다.")
+            return False
+            
+        EXPORT_AVAILABLE = False
+        st.error(f"❌ PDF/Excel 생성 모듈 로드 실패: {e}")
 
 from util.email_util import create_email_ui
 from news_collector import create_google_news_tab, GoogleNewsCollector
@@ -42,7 +56,9 @@ class SessionManager:
             'financial_data', 'quarterly_data',
             'financial_insight', 'integrated_insight',
             'selected_companies', 'manual_financial_data',
-            'google_news_data', 'google_news_insight'
+            'google_news_data', 'google_news_insight',
+            # ✅ PDF 생성을 위한 추가 변수들
+            'chart_df', 'gap_analysis_df', 'insights_list'
         ]
         
         # 각 변수 초기화
@@ -73,6 +89,16 @@ class SessionManager:
             st.session_state.analysis_status[data_type] = {}
         st.session_state.analysis_status[data_type]['completed'] = True
         st.session_state.analysis_status[data_type]['timestamp'] = st.session_state.last_analysis_time
+        
+        # ✅ PDF 생성을 위한 데이터 전처리 추가
+        if data_type == 'financial_data' and data is not None:
+            # chart_df 생성 (PDF 차트용)
+            st.session_state.chart_df = prepare_chart_data(data)
+            
+            # gap_analysis_df 생성 (PDF 갭분석용) 
+            raw_cols = resolve_raw_cols_for_gap(data)
+            if len(raw_cols) >= 2:
+                st.session_state.gap_analysis_df = create_gap_analysis(data, raw_cols)
     
     @staticmethod
     def get_data_status(data_type: str) -> dict:
@@ -86,6 +112,47 @@ class SessionManager:
         """데이터 사용 가능 여부 확인"""
         data = st.session_state.get(data_type)
         return data is not None and (not hasattr(data, 'empty') or not data.empty)
+
+# ✅ PDF 생성을 위한 데이터 전처리 함수 추가
+def prepare_chart_data(financial_data):
+    """재무 데이터를 차트용 형태로 변환"""
+    if financial_data is None or financial_data.empty:
+        return None
+    
+    try:
+        # financial_data를 chart_df 형태로 변환
+        chart_rows = []
+        
+        # 회사 컬럼 찾기 (구분, _원시값 제외)
+        company_cols = [col for col in financial_data.columns 
+                       if col != '구분' and not col.endswith('_원시값')]
+        
+        for _, row in financial_data.iterrows():
+            metric = row['구분']
+            for company in company_cols:
+                value = row[company]
+                if pd.notna(value):
+                    # 숫자 추출 (%, 조원 등 제거)
+                    try:
+                        if isinstance(value, str):
+                            clean_value = value.replace('%', '').replace('조원', '').replace(',', '')
+                            numeric_value = float(clean_value)
+                        else:
+                            numeric_value = float(value)
+                        
+                        chart_rows.append({
+                            '구분': metric,
+                            '회사': company, 
+                            '수치': numeric_value
+                        })
+                    except:
+                        continue
+        
+        return pd.DataFrame(chart_rows) if chart_rows else None
+        
+    except Exception as e:
+        st.warning(f"차트 데이터 준비 중 오류: {e}")
+        return None
 
 def sort_quarterly_by_quarter(df: pd.DataFrame) -> pd.DataFrame:
     """분기별 데이터 정렬"""
@@ -104,7 +171,6 @@ def sort_quarterly_by_quarter(df: pd.DataFrame) -> pd.DataFrame:
         pass
     return out
     
-#헬퍼 함수 추가 (util 함수 근처로 추가하기) 
 def resolve_raw_cols_for_gap(df: pd.DataFrame) -> list:
     """
     갭 분석에 사용할 컬럼 목록을 반환.
@@ -126,6 +192,25 @@ def resolve_raw_cols_for_gap(df: pd.DataFrame) -> list:
     # 3) 남아있는 회사명 컬럼 자동 선택
     cols = [c for c in df.columns if c != '구분' and not c.endswith('_원시값')]
     return cols
+
+# ✅ 인사이트 수집 함수 추가
+def collect_all_insights():
+    """모든 인사이트를 리스트로 수집"""
+    insights = []
+    
+    if SessionManager.is_data_available('financial_insight'):
+        insights.append(st.session_state.financial_insight)
+    
+    if SessionManager.is_data_available('manual_financial_insight'):
+        insights.append(st.session_state.manual_financial_insight)
+        
+    if SessionManager.is_data_available('google_news_insight'):
+        insights.append(st.session_state.google_news_insight)
+        
+    if SessionManager.is_data_available('integrated_insight'):
+        insights.append(st.session_state.integrated_insight)
+    
+    return insights
 
 def render_financial_analysis_tab():
     """재무분석 탭 렌더링"""
@@ -251,7 +336,7 @@ def render_financial_analysis_tab():
                         st.warning("⚠️ 수집된 분기별 데이터가 없습니다.")
 
                 if dataframes:
-                    # 데이터 저장
+                    # 데이터 저장 (✅ PDF용 데이터도 함께 준비)
                     financial_data = processor.merge_company_data(dataframes)
                     SessionManager.save_data('financial_data', financial_data)
                     
@@ -360,8 +445,6 @@ def render_financial_results():
             st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
     else:
         st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
-        # 디버깅 도움이 필요하면 주석 해제
-        # st.caption(f"현재 사용 가능한 컬럼: {list(final_df.columns)}")
     
     # AI 인사이트 표시
     if SessionManager.is_data_available('financial_insight'):
@@ -449,7 +532,7 @@ def render_manual_upload_tab():
             quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
             st.dataframe(quarterly_df, use_container_width=True)
             
-            if PLOTLY_AVAILABLE:
+                        if PLOTLY_AVAILABLE:
                 # ✅ 분기가 '연간'이 아닌 행만 차트에 사용
                 chart_input = quarterly_df.copy()
                 if '분기' in chart_input.columns:
@@ -563,7 +646,33 @@ def render_report_generation_tab():
         # 보고서 형식 선택
         report_format = st.radio("파일 형식 선택", ["PDF", "Excel"], horizontal=True)
 
-        if st.button("📥 보고서 생성", type="primary", key="make_report"):
+        # ✅ export.py의 create_pdf_download_button 함수 사용
+        if EXPORT_AVAILABLE and report_format == "PDF":
+            st.markdown("---")
+            st.markdown("**🚀 고급 PDF 생성 (export.py 모듈 사용)**")
+            
+            # 데이터 우선순위: DART 자동 > 수동 업로드
+            financial_data_for_report = None
+            if SessionManager.is_data_available('financial_data'):
+                financial_data_for_report = st.session_state.financial_data
+            elif SessionManager.is_data_available('manual_financial_data'):
+                financial_data_for_report = st.session_state.manual_financial_data
+            
+            # PDF 다운로드 버튼 (export.py의 함수 직접 사용)
+            create_pdf_download_button(
+                financial_data=financial_data_for_report,
+                news_data=st.session_state.get('google_news_data'),
+                insights=collect_all_insights(),
+                quarterly_df=st.session_state.get('quarterly_data'),
+                chart_df=st.session_state.get('chart_df'),
+                gap_analysis_df=st.session_state.get('gap_analysis_df'),
+                report_target=report_target.strip() or "SK이노베이션 경영진",
+                report_author=report_author.strip() or "AI 분석 시스템",
+                show_footer=show_footer
+            )
+
+        # ✅ 기존 보고서 생성 버튼 (fallback)
+        if st.button("📥 보고서 생성 (기본)", type="secondary", key="make_report_basic"):
             # 데이터 우선순위: DART 자동 > 수동 업로드
             financial_data_for_report = None
             if SessionManager.is_data_available('financial_data'):
@@ -580,30 +689,26 @@ def render_report_generation_tab():
                         file_bytes = create_enhanced_pdf_report(
                             financial_data=financial_data_for_report,
                             news_data=st.session_state.get('google_news_data'),
-                            insights=st.session_state.get('integrated_insight') or 
-                                   st.session_state.get('financial_insight') or 
-                                   st.session_state.get('manual_financial_insight') or
-                                   st.session_state.get('google_news_insight'),
+                            insights=collect_all_insights(),
                             quarterly_df=quarterly_df,
+                            chart_df=st.session_state.get('chart_df'),
+                            gap_analysis_df=st.session_state.get('gap_analysis_df'),
                             show_footer=show_footer,
                             report_target=report_target.strip() or "보고 대상 미기재",
                             report_author=report_author.strip() or "보고자 미기재"
                         )
-                        filename = "SK_Energy_Analysis_Report.pdf"
+                        filename = f"SK_Energy_Analysis_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                         mime_type = "application/pdf"
                     else:
                         file_bytes = create_excel_report(
                             financial_data=financial_data_for_report,
                             news_data=st.session_state.get('google_news_data'),
-                            insights=st.session_state.get('integrated_insight') or 
-                                   st.session_state.get('financial_insight') or 
-                                   st.session_state.get('manual_financial_insight') or
-                                   st.session_state.get('google_news_insight')
+                            insights=collect_all_insights()
                         )
-                        filename = "SK_Energy_Analysis_Report.xlsx"
+                        filename = f"SK_Energy_Analysis_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                         mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-                    if file_bytes:
+                    if file_bytes and isinstance(file_bytes, bytes) and len(file_bytes) > 1000:
                         # 세션에 파일 정보 저장
                         st.session_state.generated_file = file_bytes
                         st.session_state.generated_filename = filename
@@ -618,6 +723,9 @@ def render_report_generation_tab():
                         st.success("✅ 보고서가 성공적으로 생성되었습니다!")
                     else:
                         st.error("❌ 보고서 생성에 실패했습니다.")
+                        if isinstance(file_bytes, bytes):
+                            error_msg = file_bytes.decode('utf-8', errors='ignore')
+                            st.error(f"오류 내용: {error_msg}")
                         
                 except Exception as e:
                     st.error(f"보고서 생성 중 오류가 발생했습니다: {str(e)}")
@@ -677,11 +785,29 @@ def main():
     if st.session_state.last_analysis_time:
         st.info(f"🕒 마지막 분석 시간: {st.session_state.last_analysis_time}")
     
-    # Export 모듈 상태 표시
-    if EXPORT_AVAILABLE:
-        st.success("✅ PDF/Excel 보고서 생성 기능 사용 가능")
-    else:
-        st.warning("⚠️ PDF/Excel 보고서 생성 기능 사용 불가 - util/export.py 확인 필요")
+    # Export 모듈 상태 표시 (사이드바로 이동)
+    with st.sidebar:
+        st.header("📊 시스템 상태")
+        if EXPORT_AVAILABLE:
+            st.success("✅ PDF/Excel 보고서 생성 가능")
+        else:
+            st.warning("⚠️ PDF/Excel 생성 불가")
+            st.caption("export.py 및 reportlab 확인 필요")
+            
+        # 데이터 상태 요약
+        st.header("📋 데이터 현황")
+        data_summary = {
+            "재무 데이터": SessionManager.is_data_available('financial_data'),
+            "분기별 데이터": SessionManager.is_data_available('quarterly_data'), 
+            "뉴스 데이터": SessionManager.is_data_available('google_news_data'),
+            "통합 인사이트": SessionManager.is_data_available('integrated_insight')
+        }
+        
+        for name, available in data_summary.items():
+            if available:
+                st.success(f"✅ {name}")
+            else:
+                st.info(f"⏳ {name}")
     
     # 탭 생성
     tabs = st.tabs([
