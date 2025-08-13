@@ -628,77 +628,139 @@ def create_korean_pdf_report(
         story.append(Paragraph(summary_text, body_style))
         story.append(Spacer(1, 20))
         
-        # 1. 재무분석 결과
-        story.append(Paragraph("1. 재무분석 결과", heading_style))
-        story.append(Spacer(1, 10))
+        # ✅ 동적 섹션 구조로 변경
+        section_counter = 1
         
-        # 1-1. 주요 재무지표 테이블
-        story.append(Paragraph("1-1. 주요 재무지표", heading_style))
-        story.append(Spacer(1, 6))
-        
+        # 재무분석 섹션 (데이터가 있을 때만)
         if use_real_data:
+            story.append(Paragraph(f"{section_counter}. 실제 데이터 기반 재무분석 결과", heading_style))
+            story.append(Spacer(1, 10))
+            
+            # 실제 데이터 요약
+            summary_text = generate_real_summary(financial_data)
+            story.append(Paragraph(summary_text, body_style))
+            story.append(Spacer(1, 15))
+            
+            # 주요 재무지표 테이블 (실제 데이터)
+            story.append(Paragraph(f"{section_counter}-1. 수집된 재무지표", heading_style))
+            story.append(Spacer(1, 6))
+            
             financial_table = create_real_data_table(financial_data, registered_fonts)
+            if financial_table:
+                story.append(financial_table)
+                story.append(Paragraph("※ 위 데이터는 DART에서 수집한 실제 재무 정보입니다.", body_style))
+            else:
+                story.append(Paragraph("• 재무 데이터 테이블을 생성할 수 없습니다.", body_style))
+            
+            story.append(Spacer(1, 16))
+            
+            # 차트 분석 (실제 데이터)
+            story.append(Paragraph(f"{section_counter}-2. 실제 데이터 차트 분석", heading_style))
+            story.append(Spacer(1, 8))
+            
+            charts = create_real_data_charts(financial_data)
+            chart_added = False
+            
+            for chart_name, chart_title in [('revenue_comparison', '매출액 비교'), 
+                                           ('roe_comparison', 'ROE 성과 비교')]:
+                if charts.get(chart_name):
+                    chart_img = safe_create_chart_image(charts[chart_name], width=450, height=270)
+                    if chart_img:
+                        story.append(Paragraph(f"▶ {chart_title} (실제 데이터)", body_style))
+                        story.append(chart_img)
+                        story.append(Spacer(1, 10))
+                        chart_added = True
+            
+            if not chart_added:
+                story.append(Paragraph("📊 실제 데이터로 차트를 생성할 수 없어 텍스트로 대체합니다.", body_style))
+            
+            section_counter += 1
+        
         else:
+            # 샘플 데이터 섹션 (데이터가 없을 때)
+            story.append(Paragraph(f"{section_counter}. 샘플 데이터 기반 분석 (참고용)", heading_style))
+            story.append(Spacer(1, 10))
+            story.append(Paragraph("※ 실제 분석 데이터가 없어 샘플 데이터로 보고서를 생성합니다.", body_style))
+            story.append(Spacer(1, 15))
+            
             financial_table = create_korean_table(registered_fonts)
+            if financial_table:
+                story.append(financial_table)
+                
+            charts = create_korean_charts()
+            for chart_name, chart_title in [('revenue_comparison', '매출액 비교'), 
+                                           ('roe_comparison', 'ROE 성과 비교')]:
+                if charts.get(chart_name):
+                    chart_img = safe_create_chart_image(charts[chart_name], width=450, height=270)
+                    if chart_img:
+                        story.append(Paragraph(f"▶ {chart_title} (샘플)", body_style))
+                        story.append(chart_img)
+                        story.append(Spacer(1, 10))
+            
+            section_counter += 1
         
-        if financial_table:
-            story.append(financial_table)
-        else:
-            story.append(Paragraph("• 재무 데이터 테이블을 생성할 수 없습니다.", body_style))
-        
-        story.append(Spacer(1, 16))
-        
-        # 1-2. 차트 분석
-        story.append(Paragraph("1-2. 차트 분석", heading_style))
-        story.append(Spacer(1, 8))
-        
-        # 차트 표시
-        for chart_name, chart_title in [('revenue_comparison', '매출액 비교'), 
-                                       ('roe_comparison', 'ROE 성과 비교')]:
-            if charts.get(chart_name):
-                chart_img = safe_create_chart_image(charts[chart_name], width=450, height=270)
-                if chart_img:
-                    story.append(Paragraph(f"▶ {chart_title}", body_style))
-                    story.append(chart_img)
-                    story.append(Spacer(1, 10))
-        
-        story.append(PageBreak())
-        
-        # 2. 뉴스 분석 결과 (실제 뉴스 데이터 사용)
-        story.append(Paragraph("2. 뉴스 분석 결과", heading_style))
-        story.append(Spacer(1, 10))
-        
-        story.append(Paragraph("2-1. 주요 뉴스", heading_style))
-        story.append(Spacer(1, 6))
-        
+        # 뉴스 분석 섹션 (뉴스 데이터가 있을 때만)
         if news_data is not None and not news_data.empty:
+            story.append(PageBreak())
+            story.append(Paragraph(f"{section_counter}. 실제 뉴스 분석 결과", heading_style))
+            story.append(Spacer(1, 10))
+            
+            story.append(Paragraph(f"{section_counter}-1. 수집된 뉴스", heading_style))
+            story.append(Spacer(1, 6))
+            
             news_table = create_real_news_table(news_data, registered_fonts)
-        else:
-            news_table = create_korean_news_table(registered_fonts)
+            if news_table:
+                story.append(news_table)
+                story.append(Paragraph("※ 위 뉴스는 실제 수집된 최신 정보입니다.", body_style))
+            else:
+                story.append(Paragraph("📰 뉴스 데이터를 테이블로 변환할 수 없습니다.", body_style))
+            
+            story.append(Spacer(1, 16))
+            section_counter += 1
         
-        if news_table:
-            story.append(news_table)
-        else:
-            story.append(Paragraph("📰 뉴스 데이터가 없습니다.", body_style))
-        
-        story.append(Spacer(1, 16))
-        
-        # 3. AI 인사이트 (실제 인사이트 사용)
-        story.append(Paragraph("3. AI 인사이트", heading_style))
-        story.append(Spacer(1, 10))
-        
+        # AI 인사이트 섹션 (인사이트가 있을 때만)
         if insights and len(insights) > 0:
+            story.append(Paragraph(f"{section_counter}. AI 분석 인사이트", heading_style))
+            story.append(Spacer(1, 10))
+            
             for i, insight in enumerate(insights, 1):
                 if insight and insight.strip():
-                    story.append(Paragraph(f"3-{i}. AI 분석 결과", heading_style))
+                    story.append(Paragraph(f"{section_counter}-{i}. AI 분석 결과 #{i}", heading_style))
+                    story.append(Spacer(1, 6))
+                    
                     # 인사이트를 적절한 길이로 분할
                     insight_paragraphs = insight.split('\n\n')
-                    for para in insight_paragraphs:
+                    for para in insight_paragraphs[:3]:  # 최대 3개 문단만
                         if para.strip():
+                            # 너무 긴 문단은 자르기
+                            if len(para) > 500:
+                                para = para[:500] + "..."
                             story.append(Paragraph(para.strip(), body_style))
                     story.append(Spacer(1, 10))
-        else:
-            story.append(Paragraph("AI 인사이트가 생성되지 않았습니다.", body_style))
+            
+            story.append(Paragraph("※ 위 인사이트는 AI가 실제 데이터를 분석하여 생성한 결과입니다.", body_style))
+            section_counter += 1
+        
+        # 기본 전략 제언 (항상 포함)
+        if section_counter <= 3:  # 다른 섹션이 적으면 전략 제언 추가
+            story.append(Paragraph(f"{section_counter}. 전략 제언", heading_style))
+            story.append(Spacer(1, 10))
+            
+            strategy_content = [
+                "◆ 단기 전략 (1-2년)",
+                "• 운영 효율성 극대화를 통한 마진 확대에 집중",
+                "• 현금 창출 능력 강화로 안정적 배당 및 투자 재원 확보",
+                "",
+                "◆ 중기 전략 (3-5년)", 
+                "• 사업 포트폴리오 다각화 및 신사업 진출 검토",
+                "• 디지털 전환과 공정 혁신을 통한 경쟁력 강화"
+            ]
+            
+            for content in strategy_content:
+                if content.strip():
+                    story.append(Paragraph(content, body_style))
+                else:
+                    story.append(Spacer(1, 6))
         
         # Footer
         story.append(Spacer(1, 30))
@@ -812,6 +874,24 @@ def handle_pdf_generation_button(
     메인 코드의 기존 버튼이 클릭되었을 때 호출하는 함수
     """
     if button_clicked:
+        # ✅ 디버깅: 전달받은 데이터 상세 분석
+        st.write("🔍 **디버깅 정보:**")
+        st.write(f"- financial_data 타입: {type(financial_data)}")
+        st.write(f"- financial_data가 None인가?: {financial_data is None}")
+        
+        if financial_data is not None:
+            if hasattr(financial_data, 'empty'):
+                st.write(f"- financial_data가 비어있나?: {financial_data.empty}")
+                st.write(f"- financial_data 크기: {financial_data.shape}")
+                st.write(f"- financial_data 컬럼: {list(financial_data.columns)}")
+                st.write("**financial_data 미리보기:**")
+                st.dataframe(financial_data.head())
+            else:
+                st.write(f"- financial_data 내용: {financial_data}")
+        
+        st.write(f"- news_data: {type(news_data)} (None: {news_data is None})")
+        st.write(f"- insights: {type(insights)} (None: {insights is None}, 길이: {len(insights) if insights else 0})")
+        
         with st.spinner("한글 PDF 생성 중... (NanumGothic 폰트 사용)"):
             result = generate_pdf_report(
                 financial_data=financial_data,
