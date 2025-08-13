@@ -13,16 +13,16 @@ from visualization.charts import (
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
 
-# ✅ export 모듈 import 수정 - 올바른 경로로 변경
+# ✅ export 모듈 import 수정 - 올바른 함수명으로 변경
 try:
     # 현재 디렉토리에 export.py가 있는 경우
-    from export import create_enhanced_pdf_report, create_excel_report, create_pdf_download_button
+    from export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
     EXPORT_AVAILABLE = True
     st.success("✅ PDF/Excel 생성 모듈 로드 성공")
 except ImportError:
     try:
         # util 폴더에 있는 경우
-        from util.export import create_enhanced_pdf_report, create_excel_report, create_pdf_download_button
+        from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
         EXPORT_AVAILABLE = True
         st.success("✅ PDF/Excel 생성 모듈 로드 성공 (util 경로)")
     except ImportError as e:
@@ -30,10 +30,10 @@ except ImportError:
         def create_excel_report(*args, **kwargs):
             return b"Excel report generation is not available."
         
-        def create_enhanced_pdf_report(*args, **kwargs):
-            return b"PDF report generation is not available."
+        def generate_pdf_report(*args, **kwargs):
+            return {'success': False, 'error': 'PDF generation not available'}
         
-        def create_pdf_download_button(*args, **kwargs):
+        def handle_pdf_generation_button(*args, **kwargs):
             st.error("❌ PDF 생성 기능을 사용할 수 없습니다.")
             return False
             
@@ -644,60 +644,41 @@ def render_report_generation_tab():
         # 보고서 형식 선택
         report_format = st.radio("파일 형식 선택", ["PDF", "Excel"], horizontal=True)
 
-        # ✅ export.py의 create_pdf_download_button 함수 사용
+        # ✅ 데이터 우선순위: DART 자동 > 수동 업로드
+        financial_data_for_report = None
+        if SessionManager.is_data_available('financial_data'):
+            financial_data_for_report = st.session_state.financial_data
+        elif SessionManager.is_data_available('manual_financial_data'):
+            financial_data_for_report = st.session_state.manual_financial_data
+
+        # ✅ 수정된 PDF 생성 섹션 - 고급 PDF 생성
         if EXPORT_AVAILABLE and report_format == "PDF":
             st.markdown("---")
             st.markdown("**🚀 고급 PDF 생성 (export.py 모듈 사용)**")
             
-            # 데이터 우선순위: DART 자동 > 수동 업로드
-            financial_data_for_report = None
-            if SessionManager.is_data_available('financial_data'):
-                financial_data_for_report = st.session_state.financial_data
-            elif SessionManager.is_data_available('manual_financial_data'):
-                financial_data_for_report = st.session_state.manual_financial_data
+            # ✅ 버튼을 직접 만들고 클릭 처리
+            if st.button("📄 한글 PDF 생성 (NanumGothic 폰트)", type="primary", key="advanced_pdf_btn"):
+                success = handle_pdf_generation_button(
+                    button_clicked=True,
+                    financial_data=financial_data_for_report,
+                    news_data=st.session_state.get('google_news_data'),
+                    insights=collect_all_insights(),
+                    quarterly_df=st.session_state.get('quarterly_data'),
+                    chart_df=st.session_state.get('chart_df'),
+                    gap_analysis_df=st.session_state.get('gap_analysis_df'),
+                    report_target=report_target.strip() or "SK이노베이션 경영진",
+                    report_author=report_author.strip() or "AI 분석 시스템",
+                    show_footer=show_footer
+                )
+
+        # ✅ Excel 생성 섹션
+        if report_format == "Excel":
+            st.markdown("---")
+            st.markdown("**📊 Excel 보고서 생성**")
             
-            # PDF 다운로드 버튼 (export.py의 함수 직접 사용)
-            create_pdf_download_button(
-                financial_data=financial_data_for_report,
-                news_data=st.session_state.get('google_news_data'),
-                insights=collect_all_insights(),
-                quarterly_df=st.session_state.get('quarterly_data'),
-                chart_df=st.session_state.get('chart_df'),
-                gap_analysis_df=st.session_state.get('gap_analysis_df'),
-                report_target=report_target.strip() or "SK이노베이션 경영진",
-                report_author=report_author.strip() or "AI 분석 시스템",
-                show_footer=show_footer
-            )
-
-        # ✅ 기존 보고서 생성 버튼 (fallback)
-        if st.button("📥 보고서 생성 (기본)", type="secondary", key="make_report_basic"):
-            # 데이터 우선순위: DART 자동 > 수동 업로드
-            financial_data_for_report = None
-            if SessionManager.is_data_available('financial_data'):
-                financial_data_for_report = st.session_state.financial_data
-            elif SessionManager.is_data_available('manual_financial_data'):
-                financial_data_for_report = st.session_state.manual_financial_data
-
-            # 선택적 입력
-            quarterly_df = st.session_state.get("quarterly_data")
-
-            with st.spinner("📄 보고서 생성 중..."):
-                try:
-                    if report_format == "PDF":
-                        file_bytes = create_enhanced_pdf_report(
-                            financial_data=financial_data_for_report,
-                            news_data=st.session_state.get('google_news_data'),
-                            insights=collect_all_insights(),
-                            quarterly_df=quarterly_df,
-                            chart_df=st.session_state.get('chart_df'),
-                            gap_analysis_df=st.session_state.get('gap_analysis_df'),
-                            show_footer=show_footer,
-                            report_target=report_target.strip() or "보고 대상 미기재",
-                            report_author=report_author.strip() or "보고자 미기재"
-                        )
-                        filename = f"SK_Energy_Analysis_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-                        mime_type = "application/pdf"
-                    else:
+            if st.button("📊 Excel 보고서 생성", type="secondary", key="make_excel_report"):
+                with st.spinner("📊 Excel 보고서 생성 중..."):
+                    try:
                         file_bytes = create_excel_report(
                             financial_data=financial_data_for_report,
                             news_data=st.session_state.get('google_news_data'),
@@ -706,27 +687,33 @@ def render_report_generation_tab():
                         filename = f"SK_Energy_Analysis_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                         mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-                    if file_bytes and isinstance(file_bytes, bytes) and len(file_bytes) > 1000:
-                        # 세션에 파일 정보 저장
-                        st.session_state.generated_file = file_bytes
-                        st.session_state.generated_filename = filename
-                        st.session_state.generated_mime = mime_type
+                        if file_bytes and isinstance(file_bytes, bytes) and len(file_bytes) > 1000:
+                            # 세션에 파일 정보 저장
+                            st.session_state.generated_file = file_bytes
+                            st.session_state.generated_filename = filename
+                            st.session_state.generated_mime = mime_type
 
-                        st.download_button(
-                            label="⬇️ 보고서 다운로드",
-                            data=file_bytes,
-                            file_name=filename,
-                            mime=mime_type
-                        )
-                        st.success("✅ 보고서가 성공적으로 생성되었습니다!")
-                    else:
-                        st.error("❌ 보고서 생성에 실패했습니다.")
-                        if isinstance(file_bytes, bytes):
-                            error_msg = file_bytes.decode('utf-8', errors='ignore')
-                            st.error(f"오류 내용: {error_msg}")
-                        
-                except Exception as e:
-                    st.error(f"보고서 생성 중 오류가 발생했습니다: {str(e)}")
+                            st.download_button(
+                                label="📥 Excel 다운로드",
+                                data=file_bytes,
+                                file_name=filename,
+                                mime=mime_type,
+                                type="secondary"
+                            )
+                            st.success("✅ Excel 보고서가 성공적으로 생성되었습니다!")
+                        else:
+                            st.error("❌ Excel 보고서 생성에 실패했습니다.")
+                            if isinstance(file_bytes, bytes):
+                                error_msg = file_bytes.decode('utf-8', errors='ignore')
+                                st.error(f"오류 내용: {error_msg}")
+                            
+                    except Exception as e:
+                        st.error(f"Excel 보고서 생성 중 오류가 발생했습니다: {str(e)}")
+
+        # ✅ PDF 생성 불가능한 경우 안내
+        if not EXPORT_AVAILABLE and report_format == "PDF":
+            st.warning("⚠️ PDF 생성 기능이 비활성화되어 있습니다.")
+            st.info("💡 export.py 파일과 reportlab 패키지를 확인해주세요.")
 
     with col2:
         st.write("**📧 이메일 서비스 바로가기**")
@@ -770,7 +757,6 @@ def render_report_generation_tab():
             )
         else:
             st.info("먼저 보고서를 생성해주세요.")
-
 
 def main():
     """메인 함수"""
@@ -831,7 +817,6 @@ def main():
     
     with tabs[4]:  # 보고서 생성 탭
         render_report_generation_tab()
-
 
 if __name__ == "__main__":
     main()
