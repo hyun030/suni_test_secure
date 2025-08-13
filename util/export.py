@@ -497,3 +497,55 @@ if __name__ == "__main__":
         print("✅ 성공! korean_test.pdf 파일 확인하세요")
     else:
         print(f"❌ 실패: {pdf_data}")
+
+# 기존 export.py 파일 끝에 이 함수들을 추가하세요:
+
+def create_enhanced_pdf_report(
+    financial_data=None,
+    news_data=None,
+    insights=None,
+    quarterly_df=None,
+    show_footer=True,
+    report_target="SK이노베이션 경영진",
+    report_author="AI 분석 시스템",
+    **kwargs
+):
+    """
+    메인 코드에서 호출하는 함수 (기존 create_korean_pdf_report와 동일)
+    """
+    return create_korean_pdf_report()
+
+def create_excel_report(
+    financial_data=None,
+    news_data=None,
+    insights=None,
+    **kwargs
+):
+    """Excel 보고서 생성 (간단 버전)"""
+    try:
+        # 간단한 Excel 생성
+        buffer = io.BytesIO()
+        
+        # 샘플 데이터
+        sample_data = pd.DataFrame({
+            '구분': ['매출액(조원)', '영업이익률(%)', 'ROE(%)', 'ROA(%)'],
+            'SK에너지': [15.2, 5.6, 12.3, 8.1],
+            'S-Oil': [14.8, 5.3, 11.8, 7.8],
+            'GS칼텍스': [13.5, 4.6, 10.5, 7.2],
+            'HD현대오일뱅크': [11.2, 4.3, 9.2, 6.5]
+        })
+        
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            sample_data.to_excel(writer, sheet_name='재무분석', index=False)
+        
+        buffer.seek(0)
+        excel_data = buffer.getvalue()
+        buffer.close()
+        
+        print(f"✅ Excel 생성 완료 - {len(excel_data)} bytes")
+        return excel_data
+        
+    except Exception as e:
+        print(f"❌ Excel 생성 실패: {e}")
+        error_msg = f"Excel 생성 실패: {str(e)}"
+        return error_msg.encode('utf-8')
