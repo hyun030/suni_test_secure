@@ -9,9 +9,9 @@ import os
 import pandas as pd
 from datetime import datetime
 import streamlit as st
-import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('Agg')  # ← 반드시 pyplot import 전에
+import matplotlib.pyplot as plt
 
 # 한글 폰트 설정
 plt.rcParams['font.family'] = ['NanumGothic', 'DejaVu Sans', 'sans-serif']
@@ -22,12 +22,14 @@ try:
     from reportlab.lib import colors
     from reportlab.platypus import (
         Paragraph, Table, TableStyle, Spacer, PageBreak, 
-        Image as RLImage, SimpleDocTemplate
+        Image as RLImage, SimpleDocTemplate, KeepTogether
     )
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.units import inch
+    from reportlab.lib.utils import ImageReader
+
     REPORTLAB_AVAILABLE = True
     print("✅ ReportLab 로드 성공")
 except ImportError:
@@ -516,26 +518,25 @@ def create_sample_news_table(registered_fonts):
 # ===========================================
 
 def safe_create_chart_image(fig, width=480, height=320):
-    """안전한 차트 이미지 변환"""
+    """안전한 차트 이미지 변환 (ImageReader 사용 + DPI 상향)"""
     if fig is None or not REPORTLAB_AVAILABLE:
         return None
-    
     try:
-        img_buffer = io.BytesIO()
-        fig.savefig(img_buffer, format='png', bbox_inches='tight', 
-                   dpi=100, facecolor='white', edgecolor='none')
-        img_buffer.seek(0)
-        
-        img_data = img_buffer.getvalue()
-        if len(img_data) > 0:
-            img_buffer.seek(0)
-            img = RLImage(img_buffer, width=width, height=height)
+        buf = io.BytesIO()
+        # 선명도 확보를 위해 DPI 약간 상향
+        fig.savefig(buf, format='png', bbox_inches='tight', dpi=150, facecolor='white', edgecolor='none')
+        buf.seek(0)
+
+        img_bytes = buf.getvalue()
+        if img_bytes:
+            # ReportLab이 내부적으로 안전하게 들고 있도록 ImageReader로 감싸기
+            reader = ImageReader(io.BytesIO(img_bytes))  # 재읽기 안전
+            img = RLImage(reader, width=width, height=height)
             plt.close(fig)
             return img
-        
+
         plt.close(fig)
         return None
-        
     except Exception as e:
         print(f"차트 이미지 변환 실패: {e}")
         try:
@@ -543,6 +544,7 @@ def safe_create_chart_image(fig, width=480, height=320):
         except:
             pass
         return None
+
 
 # ===========================================
 # 📄 PDF 보고서 생성 (메인 함수)
