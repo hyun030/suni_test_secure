@@ -874,23 +874,97 @@ def handle_pdf_generation_button(
     메인 코드의 기존 버튼이 클릭되었을 때 호출하는 함수
     """
     if button_clicked:
-        # ✅ 디버깅: 전달받은 데이터 상세 분석
-        st.write("🔍 **디버깅 정보:**")
-        st.write(f"- financial_data 타입: {type(financial_data)}")
-        st.write(f"- financial_data가 None인가?: {financial_data is None}")
+        # ✅ 완전한 디버깅 정보
+        st.write("=" * 50)
+        st.write("🔍 **COMPLETE 디버깅 정보**")
+        st.write("=" * 50)
         
-        if financial_data is not None:
-            if hasattr(financial_data, 'empty'):
-                st.write(f"- financial_data가 비어있나?: {financial_data.empty}")
-                st.write(f"- financial_data 크기: {financial_data.shape}")
-                st.write(f"- financial_data 컬럼: {list(financial_data.columns)}")
-                st.write("**financial_data 미리보기:**")
-                st.dataframe(financial_data.head())
+        # 1. 파라미터 체크
+        st.write("**📥 전달받은 파라미터들:**")
+        params = {
+            'financial_data': financial_data,
+            'news_data': news_data, 
+            'insights': insights,
+            'quarterly_df': quarterly_df,
+            'chart_df': chart_df,
+            'gap_analysis_df': gap_analysis_df
+        }
+        
+        for name, data in params.items():
+            st.write(f"- {name}: {type(data)}")
+            if data is not None:
+                if hasattr(data, 'shape'):
+                    st.write(f"  └ 크기: {data.shape}")
+                elif hasattr(data, '__len__'):
+                    st.write(f"  └ 길이: {len(data)}")
+                if hasattr(data, 'columns'):
+                    st.write(f"  └ 컬럼: {list(data.columns)}")
+        
+        # 2. Streamlit 세션 체크
+        st.write("**📦 Streamlit 세션 상태:**")
+        session_keys = ['financial_data', 'news_data', 'google_news_data', 'insights', 'financial_insight']
+        for key in session_keys:
+            if key in st.session_state:
+                data = st.session_state[key]
+                st.write(f"- st.session_state['{key}']: {type(data)}")
+                if data is not None and hasattr(data, 'shape'):
+                    st.write(f"  └ 크기: {data.shape}")
             else:
-                st.write(f"- financial_data 내용: {financial_data}")
+                st.write(f"- st.session_state['{key}']: ❌ 없음")
         
-        st.write(f"- news_data: {type(news_data)} (None: {news_data is None})")
-        st.write(f"- insights: {type(insights)} (None: {insights is None}, 길이: {len(insights) if insights else 0})")
+        # 3. 실제 데이터 체크 & 강제 대체
+        st.write("**🔧 데이터 강제 체크 및 대체:**")
+        
+        # 파라미터에 데이터가 없으면 세션에서 가져오기
+        if financial_data is None and 'financial_data' in st.session_state:
+            financial_data = st.session_state['financial_data']
+            st.write("✅ financial_data를 세션에서 가져왔습니다!")
+            
+        if news_data is None and 'google_news_data' in st.session_state:
+            news_data = st.session_state['google_news_data']
+            st.write("✅ news_data를 세션에서 가져왔습니다!")
+            
+        if insights is None or len(insights) == 0:
+            session_insights = []
+            for key in ['financial_insight', 'google_news_insight', 'integrated_insight']:
+                if key in st.session_state and st.session_state[key]:
+                    session_insights.append(st.session_state[key])
+            if session_insights:
+                insights = session_insights
+                st.write(f"✅ insights를 세션에서 가져왔습니다! ({len(insights)}개)")
+        
+        # 4. 최종 데이터 상태
+        st.write("**🎯 최종 전달될 데이터:**")
+        final_params = {
+            'financial_data': financial_data,
+            'news_data': news_data,
+            'insights': insights
+        }
+        
+        for name, data in final_params.items():
+            if data is not None:
+                if hasattr(data, 'shape'):
+                    st.write(f"✅ {name}: {type(data)} - 크기 {data.shape}")
+                elif hasattr(data, '__len__'):
+                    st.write(f"✅ {name}: {type(data)} - 길이 {len(data)}")
+                else:
+                    st.write(f"✅ {name}: {type(data)}")
+            else:
+                st.write(f"❌ {name}: None")
+        
+        st.write("=" * 50)
+        
+        # 5. 강제 테스트 데이터 주입 (디버깅용)
+        if st.checkbox("🧪 강제 테스트 데이터 사용 (디버깅용)", key="force_test_data"):
+            st.warning("강제 테스트 데이터를 사용합니다!")
+            financial_data = pd.DataFrame({
+                '구분': ['매출액(조원)', '영업이익률(%)', 'ROE(%)'],
+                'SK에너지': ['50.5', '8.2', '15.1'],
+                'S-Oil': ['45.3', '7.8', '14.2'],
+                'GS칼텍스': ['40.1', '6.9', '12.8']
+            })
+            insights = ["이것은 강제 주입된 테스트 인사이트입니다. 실제 AI 분석 결과가 아닙니다."]
+            st.write("✅ 강제 테스트 데이터 주입 완료!")
         
         with st.spinner("한글 PDF 생성 중... (NanumGothic 폰트 사용)"):
             result = generate_pdf_report(
