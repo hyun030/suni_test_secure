@@ -13,18 +13,18 @@ from visualization.charts import (
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
 
-# ✅ export 모듈 import 수정 - 올바른 함수명으로 변경
+# ✅ export 모듈 import 수정 - PDF만 언급
 try:
     # 현재 디렉토리에 export.py가 있는 경우
     from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
     EXPORT_AVAILABLE = True
-    st.success("✅ PDF/Excel 생성 모듈 로드 성공")
+    st.success("✅ PDF 생성 모듈 로드 성공")
 except ImportError:
     try:
         # util 폴더에 있는 경우
         from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
         EXPORT_AVAILABLE = True
-        st.success("✅ PDF/Excel 생성 모듈 로드 성공 (util 경로)")
+        st.success("✅ PDF 생성 모듈 로드 성공 (util 경로)")
     except ImportError as e:
         # import 실패 시 대체 함수들 생성
         def create_excel_report(*args, **kwargs):
@@ -38,7 +38,7 @@ except ImportError:
             return False
             
         EXPORT_AVAILABLE = False
-        st.error(f"❌ PDF/Excel 생성 모듈 로드 실패: {e}")
+        st.error(f"❌ PDF 생성 모듈 로드 실패: {e}")
 
 from util.email_util import create_email_ui
 from news_collector import create_google_news_tab, GoogleNewsCollector
@@ -250,7 +250,7 @@ def render_financial_analysis_tab():
         )
         
         st.info("📋 수집할 보고서: 1분기보고서(Q1, 누적) • 반기보고서(Q2, 누적) • 3분기보고서(Q3, 누적) • 사업보고서(연간, 누적)\n"
-        "🔎 Q4(4분기 당기)는 연간 − (Q1+Q2+Q3)로 산출됩니다.")
+                "🔎 Q4(4분기 당기)는 연간 − (Q1+Q2+Q3)로 산출됩니다.")
 
     if st.button("🚀 DART 자동분석 시작", type="primary"):
         with st.spinner("모든 데이터를 수집하고 심층 분석 중입니다..."):
@@ -717,9 +717,9 @@ def main():
     with st.sidebar:
         st.header("📊 시스템 상태")
         if EXPORT_AVAILABLE:
-            st.success("✅ PDF/Excel 보고서 생성 가능")
+            st.success("✅ PDF 보고서 생성 가능")
         else:
-            st.warning("⚠️ PDF/Excel 생성 불가")
+            st.warning("⚠️ PDF 생성 불가")
             st.caption("export.py 및 reportlab 확인 필요")
             
         # 데이터 상태 요약
