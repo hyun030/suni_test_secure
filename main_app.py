@@ -1,17 +1,4 @@
-with tab1:
-        st.markdown("**📋 기본 손익계산서**")
-        # 기본 손익계산서 항목들만 필터링
-        basic_items = ['매출액', '매출원가', '매출총이익', '판매비와관리비', '영업이익', '영업외수익', '영업외비용', '당기순이익']
-        basic_df = final_df[final_df['구분'].isin(basic_items)]
-        st.dataframe(
-            basic_df[display_cols].set_index('구분'), 
-            use_container_width=True,
-            column_config={
-                "구분": st.column_config.TextColumn("구분", width="medium")
-            }
-        )
-    
-    with tab2:
+with tab2:
         st.markdown("**💵 고정비**")
         # 고정비 관련 항목들만 필터링 (감가상각비 제외)
         fixed_items = ['고정비', '인건비', '임차료', '관리비', '고정비율(%)']
@@ -166,13 +153,13 @@ with tab1:
                 opt_col1, opt_col2, opt_col3 = st.columns(3)
                 
                 with opt_col1:
-                    chart_height = st.selectbox("차트 높이", [400, 500, 600, 700, 800], index=2, key="manual_chart_height")
+                    chart_height = st.selectbox("차트 높이", [400, 500, 600, 700, 800], index=2)
                 
                 with opt_col2:
-                    show_values = st.checkbox("수치 표시", value=True, help="데이터 포인트에 값 표시", key="manual_show_values")
+                    show_values = st.checkbox("수치 표시", value=False, help="데이터 포인트에 값 표시")
                 
                 with opt_col3:
-                    compact_legend = st.checkbox("범례 압축", value=True, help="범례를 더 작게 표시", key="manual_compact_legend")
+                    compact_legend = st.checkbox("범례 압축", value=True, help="범례를 더 작게 표시")
                 
                 # 선택 결과 및 권장사항 표시
                 total_metrics = len(bar_metrics) + len(line_metrics)
@@ -642,19 +629,7 @@ def main():
         render_report_generation_tab()
 
 if __name__ == "__main__":
-    main(), 700, 800], index=2)
-                
-                with opt_col2:
-                    show_values = st.checkbox("수치 표시", value=False, help="데이터 포인트에 값 표시")
-                
-                with opt_col3:
-                    compact_legend = st.checkbox("범례 압축", value=True, help="범례를 더 작게 표시")
-                
-                # 선택 결과 및 권장사항 표시
-                total_metrics = len(bar_metrics) + len(line_metrics)
-                if total_metrics > 0:
-                    # 색상으로 구분된 정보 표시
-                    info_col1, info_col2 = st.columns(2)
+    main()1, info_col2 = st.columns(2)
                     with info_col1:
                         st.info(f"📊 막대: {len(bar_metrics)}개")
                     with info_col2:
@@ -962,7 +937,19 @@ def render_manual_upload_tab():
                 opt_col1, opt_col2, opt_col3 = st.columns(3)
                 
                 with opt_col1:
-                    chart_height = st.selectbox("차트 높이", [400, 500, 600# -*- coding: utf-8 -*-
+                    chart_height = st.selectbox("차트 높이", [400, 500, 600, 700, 800], index=2, key="manual_chart_height")
+                
+                with opt_col2:
+                    show_values = st.checkbox("수치 표시", value=True, help="데이터 포인트에 값 표시", key="manual_show_values")
+                
+                with opt_col3:
+                    compact_legend = st.checkbox("범례 압축", value=True, help="범례를 더 작게 표시", key="manual_compact_legend")
+                
+                # 선택 결과 및 권장사항 표시
+                total_metrics = len(bar_metrics) + len(line_metrics)
+                if total_metrics > 0:
+                    # 색상으로 구분된 정보 표시
+                    info_col# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -1529,4 +1516,17 @@ def render_financial_results():
     
     with tab1:
         st.markdown("**📋 기본 손익계산서**")
-        # 기본 손익계산서 항목
+        # 기본 손익계산서 항목들만 필터링
+        basic_items = ['매출액', '매출원가', '매출총이익', '판매비와관리비', '영업이익', '영업외수익', '영업외비용', '당기순이익']
+        basic_df = final_df[final_df['구분'].isin(basic_items)]
+        st.dataframe(
+            basic_df[display_cols].set_index('구분'), 
+            use_container_width=True,
+            column_config={
+                "구분": st.column_config.TextColumn("구분", width="medium")
+            }
+        )
+    
+    with tab2:
+        st.markdown("**💵 고정비**")
+        # 고정
