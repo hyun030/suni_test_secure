@@ -42,14 +42,22 @@ class OpenAIInsightGenerator:
 
 다음 항목에 맞춰 **전략적 인사이트**를 도출해주세요:
 
+<div style="background:#e3f2fd;padding:8px 12px;border-left:6px solid #42a5f5;font-weight:bold;">
 ## 1. 📊 SK에너지 현재 재무 상황 분석
+</div>
+<aside style="background:#f0f4ff;padding:12px;border-radius:8px;">
 - 최근 수익성 변화와 원인 진단
 - 경쟁사(GS칼텍스 등) 대비 수익구조의 강점/약점
 - 영업이익률, 순이익률, 원가율, 판관비율 등 주요 지표 비교
+</aside>
 
+<div style="background:#e3f2fd;padding:8px 12px;border-left:6px solid #42a5f5;font-weight:bold;">
 ## 2. 🔍 경쟁사 대비 사업 경쟁력 분석
+</div>
+<aside style="background:#f9f9f9;padding:12px;border-radius:8px;">
 - 경쟁사 대비 원가 효율성, 수익성, 비용 구조 차이
 - SK에너지가 개선하거나 강화할 수 있는 포인트 도출
+</aside>
 
 ## 3. 🧩 전략적 시사점 및 내부 개선 방향
 - 단기적으로 재무 개선을 위해 우선 검토해야 할 영역
