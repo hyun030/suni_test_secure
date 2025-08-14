@@ -64,6 +64,112 @@ def _render_ai_html(raw: str):
 
     return s
 
+# --- 카드 스타일 (마크다운을 카드처럼 보이게) ---
+st.markdown("""
+<style>
+.md-card {background:#fff;border:1px solid #e9ecef;border-radius:12px;
+          box-shadow:0 4px 12px rgba(0,0,0,.05); padding:16px 18px; margin:14px 0;}
+.md-card h3, .md-card h4 {margin:0 0 8px 0}
+.md-card ul {margin:6px 0 0 18px; line-height:1.6}
+.section-title {font-weight:800; font-size:18px; display:flex; gap:8px; align-items:center; margin-bottom:8px}
+.section-title .emoji {font-size:20px}
+</style>
+""", unsafe_allow_html=True)
+
+# --- 마크다운 결과를 '큰 소제목(## 1., ## 2., ...)' 기준 카드로 렌더 ---
+def render_insight_as_cards(text: str):
+    """
+    1) 우선 HTML이 섞여 있으면 그대로 렌더
+    2) 그 외에는 '## 1. ...' 같은 번호 달린 H2 제목 기준으로 카드를 만든다.
+       - H2 단위로 하나의 카드
+    3) 만약 H2 제목을 전혀 못 찾으면 (예: 5-2 ~ 5-5만 있는 경우)
+       기존의 📊/⚠️/📈/🎯 4섹션 카드 분해 로직을 사용한다.
+    """
+    if not text:
+        return
+
+    # 1) HTML 포함 시 원문 그대로
+    if "<div" in text or "<ul" in text or "<h3" in text or "<aside" in text:
+        st.markdown(_render_ai_html(text), unsafe_allow_html=True)
+        return
+
+    import re
+
+    s = text.strip()
+
+    # 2) '## 1. ...' 같은 상위 H2 제목 기준으로 섹션 분리
+    #    - 캡쳐된 제목 라인(heading_line)과 그 다음 제목 전까지의 본문(body)을 카드로 묶음
+    h2_pattern = re.compile(r"(?m)^##\s*\d+\.\s.*$")
+    h2_matches = list(h2_pattern.finditer(s))
+
+    if h2_matches:
+        # 마지막 섹션까지 본문을 잘라내기 위한 보조 함수
+        def _section_slice(start_idx, next_start_idx=None):
+            chunk = s[start_idx: next_start_idx].strip() if next_start_idx else s[start_idx:].strip()
+            # 첫 줄(제목)과 나머지 본문 분리
+            first_newline = chunk.find("\n")
+            if first_newline == -1:
+                heading_line = chunk
+                body = ""
+            else:
+                heading_line = chunk[:first_newline].strip()
+                body = chunk[first_newline+1:].strip()
+            return heading_line, body
+
+        for i, m in enumerate(h2_matches):
+            start = m.start()
+            next_start = h2_matches[i+1].start() if i+1 < len(h2_matches) else None
+            heading_line, body = _section_slice(start, next_start)
+
+            # "## " 제거한 제목만 표시
+            display_title = heading_line.lstrip("#").strip()
+
+            # 카드 래퍼 + 제목
+            st.markdown(
+                f"""
+<div class="md-card">
+  <div class="section-title"><span class="emoji">📑</span><span>{display_title}</span></div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            # 본문은 마크다운 그대로 렌더
+            if body:
+                st.markdown(body)
+
+        return
+
+    # 3) H2 제목이 전혀 없으면, 기존의 5-2~5-5 템플릿(📊/⚠️/📈/🎯) 기준으로 카드 분해
+    titles = ["📊 경쟁사 비교 분석", "⚠️ 위험신호", "📈 전략방안", "🎯 우선순위"]
+    parts = re.split(r"(?=^(?:📊 경쟁사 비교 분석|⚠️ 위험신호|📈 전략방안|🎯 우선순위)\s*$)", s, flags=re.MULTILINE)
+
+    found_any = False
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        found = next((t for t in titles if part.startswith(t)), None)
+        if found:
+            found_any = True
+            body = part[len(found):].lstrip()
+            st.markdown(
+                f"""
+<div class="md-card">
+  <div class="section-title"><span class="emoji">{found.split()[0]}</span><span>{found}</span></div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            if body:
+                st.markdown(body)
+        else:
+            st.markdown(part)
+
+    if not found_any:
+        st.markdown('<div class="md-card">', unsafe_allow_html=True)
+        st.markdown(s)
+        st.markdown('</div>', unsafe_allow_html=True)
+
 st.set_page_config(page_title="SK Profit+: 손익 개선 전략 대시보드", page_icon="⚡", layout="wide")
 
 class SessionManager:
