@@ -515,10 +515,10 @@ def render_financial_results():
         )
     
     with tab2:
-        st.markdown("**💵 고정비**")
-        # 고정비 관련 항목들만 필터링 (인건비만 표시, 감가상각비는 계산에만 포함)
-        fixed_items = ['인건비']
-        fixed_df = final_df[final_df['구분'].isin(fixed_items)]
+        st.markdown("**🏢 고정비 분석**")
+        # 고정비 관련 항목들만 필터링 (계산된 고정비 포함)
+        fixed_items = ['고정비', '감가상각비', '인건비', '임차료', '관리비', '고정비율(%)']
+        fixed_df = final_df[final_df['구분'].isin(fixed_items) | final_df['구분'].str.startswith('  └')]
         if not fixed_df.empty:
             st.dataframe(
                 fixed_df[display_cols].set_index('구분'), 
@@ -527,9 +527,8 @@ def render_financial_results():
                     "구분": st.column_config.TextColumn("구분", width="medium")
                 }
             )
-            st.info("💡 **참고**: 고정비 총액에는 감가상각비가 포함되어 있습니다. (감가상각비는 별도로 계산됨)")
         else:
-            st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
+            st.info("💡 고정비 데이터가 수집되지 않았습니다. DART API에서 감가상각비, 인건비 등의 데이터를 확인해보세요.")
     
     with tab3:
         st.markdown("**💸 변동비**")
