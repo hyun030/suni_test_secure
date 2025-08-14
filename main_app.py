@@ -207,7 +207,6 @@ def render_insight_as_cards(text: str):
         st.markdown(s)
         st.markdown('</div>', unsafe_allow_html=True)
 
-
 st.set_page_config(page_title="SK Profit+: 손익 개선 전략 대시보드", page_icon="⚡", layout="wide")
 
 class SessionManager:
