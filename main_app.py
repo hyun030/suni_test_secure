@@ -1,3 +1,7 @@
+main_app.py
+
+
+
 # -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
@@ -10,9 +14,7 @@ from insight.openai_api import OpenAIInsightGenerator
 from visualization.charts import (
     create_sk_bar_chart, create_sk_radar_chart, 
     create_quarterly_trend_chart, create_gap_trend_chart, create_flexible_trend_chart,
-    create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE,
-    create_cost_analysis_chart, create_contribution_margin_chart, 
-    create_cost_structure_pie_chart, create_cost_trend_analysis
+    create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
 
 # ✅ export 모듈 import 수정 - PDF만 언급
@@ -65,6 +67,149 @@ def _render_ai_html(raw: str):
                   for line in s.splitlines())
 
     return s
+
+# --- 카드 스타일 (마크다운을 카드처럼 보이게) ---
+st.markdown("""
+<style>
+.md-card {background:#fff;border:1px solid #e9ecef;border-radius:12px;
+          box-shadow:0 4px 12px rgba(0,0,0,.05); padding:16px 18px; margin:14px 0;}
+.md-card h3, .md-card h4 {margin:0 0 8px 0}
+.md-card ul {margin:6px 0 0 18px; line-height:1.6}
+.section-title {font-weight:800; font-size:18px; display:flex; gap:8px; align-items:center; margin-bottom:8px}
+.section-title .emoji {font-size:20px}
+.subcard-wrap {display:grid; gap:12px; margin-top:10px}
+.subcard {background:#fafafa; border:1px solid #eef1f4; border-radius:10px; padding:12px 14px;}
+</style>
+""", unsafe_allow_html=True)
+
+def render_insight_as_cards(text: str):
+    """
+    1) HTML 포함이면 그대로 렌더
+    2) '## 1. ...' 같은 번호형 H2 제목 → H2 단위 카드
+    3) 뉴스/벤치마킹 리포트(시장트렌드/주요활동/아이디어TOP2/기타) → 각 섹션 카드 + 아이디어 1·2는 서브카드
+    4) 그래도 못 나누면 5-2~5-5(📊/⚠️/📈/🎯) 기준
+    """
+    if not text:
+        return
+
+    # 1) HTML 포함 시 원문 그대로
+    if "<div" in text or "<ul" in text or "<h3" in text or "<aside" in text:
+        st.markdown(_render_ai_html(text), unsafe_allow_html=True)
+        return
+
+    import re
+    s = text.strip()
+
+    # 2) 번호형 H2 ('## 1. ...')를 먼저 시도
+    h2_matches = list(re.finditer(r"(?m)^##\s*\d+\.\s.*$", s))
+    if h2_matches:
+        def _slice(start, nxt=None):
+            chunk = s[start: nxt].strip() if nxt else s[start:].strip()
+            p = chunk.find("\n")
+            return (chunk if p == -1 else chunk[:p].strip().lstrip("#").strip(),
+                    "" if p == -1 else chunk[p+1:].strip())
+
+        for i, m in enumerate(h2_matches):
+            start = m.start()
+            nxt = h2_matches[i+1].start() if i+1 < len(h2_matches) else None
+            title, body = _slice(start, nxt)
+            st.markdown(
+                f"""<div class="md-card">
+                        <div class="section-title"><span class="emoji">📑</span><span>{title}</span></div>
+                    </div>""",
+                unsafe_allow_html=True,
+            )
+            if body:
+                st.markdown(body)
+        return
+
+    # 3) 뉴스/벤치마킹 리포트 섹션 카드화
+    # 섹션 제목 후보들(줄 시작에 있을 수 있고, '### ' 등 헤딩마크가 붙을 수도 있어서 옵션 처리)
+    news_titles = [
+        r"(?:#+\s*)?시장\s*트렌드",
+        r"(?:#+\s*)?주목해야\s*할\s*경쟁사의\s*활동",
+        r"(?:#+\s*)?핵심\s*벤치마킹\s*아이디어\s*TOP\s*2",
+        r"(?:#+\s*)?기타\s*주목할\s*만한\s*활동",
+    ]
+    # lookahead로 제목 경계 유지하며 split
+    news_split = re.split(r"(?=^(?:%s)\s*$)" % "|".join(news_titles), s, flags=re.MULTILINE)
+    # news_split 에는 공백/기타가 섞일 수 있으니 정리
+    blocks = [b.strip() for b in news_split if b.strip()]
+
+    def _is_news_title(line: str) -> bool:
+        return any(re.match(rf"^(?:{pat})\s*$", line) for pat in news_titles)
+
+    if blocks and any(_is_news_title(b.splitlines()[0]) for b in blocks):
+        for blk in blocks:
+            lines = blk.splitlines()
+            head = lines[0].lstrip("#").strip()
+            body = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+
+            # 카드 헤더
+            st.markdown(
+                f"""<div class="md-card">
+                        <div class="section-title"><span class="emoji">🗂️</span><span>{head}</span></div>""",
+                unsafe_allow_html=True,
+            )
+
+            # "핵심 벤치마킹 아이디어 TOP 2" 내부의 아이디어 1/2 서브카드 분리
+            if re.search(r"핵심\s*벤치마킹\s*아이디어\s*TOP\s*2", head):
+                # '### 💡 아이디어 n:' 형태 또는 '아이디어 n:' 형태 모두 허용
+                idea_chunks = re.split(r"(?=^.*아이디어\s*\d+\s*:.*$)", body, flags=re.MULTILINE)
+                idea_chunks = [c.strip() for c in idea_chunks if c.strip()]
+
+                # 서브카드 묶음 래퍼
+                st.markdown('<div class="subcard-wrap">', unsafe_allow_html=True)
+
+                for ch in idea_chunks:
+                    first_nl = ch.find("\n")
+                    idea_title = (ch if first_nl == -1 else ch[:first_nl]).strip().lstrip("#").strip()
+                    idea_body = "" if first_nl == -1 else ch[first_nl+1:].strip()
+
+                    st.markdown(
+                        f"""<div class="subcard">
+                                <div class="section-title" style="font-size:16px"><span class="emoji">💡</span><span>{idea_title}</span></div>
+                            </div>""",
+                        unsafe_allow_html=True,
+                    )
+                    if idea_body:
+                        st.markdown(idea_body)
+
+                st.markdown("</div></div>", unsafe_allow_html=True)  # subcard-wrap, md-card 닫기
+            else:
+                # 일반 섹션은 본문만
+                if body:
+                    st.markdown(body)
+                st.markdown("</div>", unsafe_allow_html=True)  # md-card 닫기
+        return
+
+    # 4) 마지막 폴백: 5-2~5-5 템플릿(📊/⚠️/📈/🎯)
+    titles = ["📊 경쟁사 비교 분석", "⚠️ 위험신호", "📈 전략방안", "🎯 우선순위"]
+    parts = re.split(r"(?=^(?:📊 경쟁사 비교 분석|⚠️ 위험신호|📈 전략방안|🎯 우선순위)\s*$)", s, flags=re.MULTILINE)
+    found_any = False
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        found = next((t for t in titles if part.startswith(t)), None)
+        if found:
+            found_any = True
+            body = part[len(found):].lstrip()
+            st.markdown(
+                f"""<div class="md-card">
+                        <div class="section-title"><span class="emoji">{found.split()[0]}</span><span>{found}</span></div>
+                    </div>""",
+                unsafe_allow_html=True,
+            )
+            if body:
+                st.markdown(body)
+        else:
+            st.markdown(part)
+
+    if not found_any:
+        st.markdown('<div class="md-card">', unsafe_allow_html=True)
+        st.markdown(s)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 st.set_page_config(page_title="SK Profit+: 손익 개선 전략 대시보드", page_icon="⚡", layout="wide")
 
@@ -677,45 +822,11 @@ def render_financial_results():
     else:
         st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
     
-    # 고정비, 변동비, 공헌이익 분석 차트 추가
-    if PLOTLY_AVAILABLE and SessionManager.is_data_available('quarterly_data'):
-        st.markdown("---")
-        st.subheader("🏢 고정비 & 변동비 분석")
-        
-        quarterly_df = st.session_state.quarterly_data
-        # '연간' 행 제거
-        quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
-        
-        if not quarterly_df.empty:
-            # 고정비 vs 변동비 분석 차트
-            cost_analysis_chart = create_cost_analysis_chart(quarterly_df)
-            if cost_analysis_chart:
-                st.plotly_chart(cost_analysis_chart, use_container_width=True)
-            
-            # 공헌이익 분석 차트
-            contribution_chart = create_contribution_margin_chart(quarterly_df)
-            if contribution_chart:
-                st.plotly_chart(contribution_chart, use_container_width=True)
-            
-            # 비용 구조 파이 차트
-            col1, col2 = st.columns(2)
-            with col1:
-                cost_structure_chart = create_cost_structure_pie_chart(quarterly_df)
-                if cost_structure_chart:
-                    st.plotly_chart(cost_structure_chart, use_container_width=True)
-            
-            with col2:
-                cost_trend_chart = create_cost_trend_analysis(quarterly_df)
-                if cost_trend_chart:
-                    st.plotly_chart(cost_trend_chart, use_container_width=True)
-        else:
-            st.info("💡 고정비, 변동비 분석을 위한 분기별 데이터가 부족합니다.")
-    
     # AI 인사이트 표시
     if SessionManager.is_data_available('financial_insight'):
         st.markdown("---")
         st.subheader("🤖 AI 재무 인사이트")
-        st.markdown(_render_ai_html(st.session_state.financial_insight), unsafe_allow_html=True)
+        render_insight_as_cards(st.session_state.financial_insight)
 
 def render_manual_upload_tab():
     """수동 파일 업로드 탭 렌더링"""
@@ -997,46 +1108,12 @@ def render_manual_upload_tab():
                             st.success(f"✅ 현재 표시 중: 회사 {len(selected_companies_manual)}개, 분기 {len(selected_quarters_manual)}개, 총 지표 {total_metrics_manual}개")
                         else:
                             st.warning("선택된 설정으로 차트를 생성할 수 없습니다.")
-                
-                # 수동 업로드용 고정비, 변동비 분석 차트 추가
-                if PLOTLY_AVAILABLE:
-                    st.markdown("---")
-                    st.subheader("🏢 고정비 & 변동비 분석 (수동 업로드)")
-                    
-                    # '연간' 행 제거
-                    chart_input_manual = chart_input.copy()
-                    chart_input_manual = chart_input_manual[~chart_input_manual["분기"].str.contains("연간")]
-                    
-                    if not chart_input_manual.empty:
-                        # 고정비 vs 변동비 분석 차트
-                        cost_analysis_chart_manual = create_cost_analysis_chart(chart_input_manual)
-                        if cost_analysis_chart_manual:
-                            st.plotly_chart(cost_analysis_chart_manual, use_container_width=True)
-                        
-                        # 공헌이익 분석 차트
-                        contribution_chart_manual = create_contribution_margin_chart(chart_input_manual)
-                        if contribution_chart_manual:
-                            st.plotly_chart(contribution_chart_manual, use_container_width=True)
-                        
-                        # 비용 구조 파이 차트
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            cost_structure_chart_manual = create_cost_structure_pie_chart(chart_input_manual)
-                            if cost_structure_chart_manual:
-                                st.plotly_chart(cost_structure_chart_manual, use_container_width=True)
-                        
-                        with col2:
-                            cost_trend_chart_manual = create_cost_trend_analysis(chart_input_manual)
-                            if cost_trend_chart_manual:
-                                st.plotly_chart(cost_trend_chart_manual, use_container_width=True)
                     else:
-                        st.info("💡 고정비, 변동비 분석을 위한 분기별 데이터가 부족합니다.")
+                        st.info("💡 막대 또는 추세선 지표를 선택하면 차트가 표시됩니다.")
                 else:
-                    st.info("💡 막대 또는 추세선 지표를 선택하면 차트가 표시됩니다.")
+                    st.warning("사용 가능한 지표가 없습니다.")
             else:
-                st.warning("사용 가능한 지표가 없습니다.")
-        else:
-            st.info("📊 분기별 차트 모듈이 없습니다.")
+                st.info("📊 분기별 차트 모듈이 없습니다.")
 
         # 갭차이 분석 추가
         st.markdown("---")
@@ -1064,7 +1141,7 @@ def render_manual_upload_tab():
         if SessionManager.is_data_available('manual_financial_insight'):
             st.markdown("---")
             st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
-            st.markdown(_render_ai_html(st.session_state.manual_financial_insight), unsafe_allow_html=True)
+            render_insight_as_cards(st.session_state.manual_financial_insight)
 
 def render_integrated_insight_tab():
     """통합 인사이트 탭 렌더링"""
@@ -1112,7 +1189,7 @@ def render_integrated_insight_tab():
     # 통합 인사이트 결과 표시
     if SessionManager.is_data_available('integrated_insight'):
         st.subheader("🤖 통합 인사이트 결과")
-        st.markdown(_render_ai_html(st.session_state.integrated_insight), unsafe_allow_html=True)
+        render_insight_as_cards(st.session_state.integrated_insight)
     else:
         st.info("재무 분석과 구글 뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
 
@@ -1233,7 +1310,7 @@ def main():
     # 탭 생성
     tabs = st.tabs([
         "📈 재무 분석", 
-        "📁 파일 업로드", 
+        "📁 재무 분석(파일 업로드)", 
         "🔍 뉴스 분석", 
         "🧠 통합 인사이트", 
         "📄 보고서 생성"
