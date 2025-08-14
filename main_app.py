@@ -13,18 +13,18 @@ from visualization.charts import (
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
 
-# ✅ export 모듈 import 수정 - 올바른 함수명으로 변경
+# ✅ export 모듈 import 수정 - PDF만 언급
 try:
     # 현재 디렉토리에 export.py가 있는 경우
     from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
     EXPORT_AVAILABLE = True
-    st.success("✅ PDF/Excel 생성 모듈 로드 성공")
+    st.success("✅ PDF 생성 모듈 로드 성공")
 except ImportError:
     try:
         # util 폴더에 있는 경우
         from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
         EXPORT_AVAILABLE = True
-        st.success("✅ PDF/Excel 생성 모듈 로드 성공 (util 경로)")
+        st.success("✅ PDF 생성 모듈 로드 성공 (util 경로)")
     except ImportError as e:
         # import 실패 시 대체 함수들 생성
         def create_excel_report(*args, **kwargs):
@@ -38,7 +38,7 @@ except ImportError:
             return False
             
         EXPORT_AVAILABLE = False
-        st.error(f"❌ PDF/Excel 생성 모듈 로드 실패: {e}")
+        st.error(f"❌ PDF 생성 모듈 로드 실패: {e}")
 
 from util.email_util import create_email_ui
 from news_collector import create_google_news_tab, GoogleNewsCollector
@@ -543,224 +543,4 @@ def render_manual_upload_tab():
                 # 트렌드 분석
                 st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="manual_gap_trend")
             else:
-                st.info("📊 분기별 차트 모듈이 없습니다.")
-
-        # 갭차이 분석 추가
-        st.markdown("---")
-        st.subheader("📈 SK에너지 VS 경쟁사 비교 분석")
-        raw_cols = resolve_raw_cols_for_gap(final_df)
-        
-        if len(raw_cols) >= 2:
-            gap_analysis = create_gap_analysis(final_df, raw_cols)
-            if not gap_analysis.empty:
-                st.markdown("**📊 SK에너지 대비 경쟁사 차이 분석표**")
-                st.dataframe(
-                    gap_analysis, 
-                    use_container_width=True,
-                    column_config={"지표": st.column_config.TextColumn("지표", width="medium")},
-                    hide_index=False
-                )
-                if PLOTLY_AVAILABLE:
-                    st.plotly_chart(create_gap_chart(gap_analysis), use_container_width=True, key="manual_gap_chart")
-            else:
-                st.warning("⚠️ 비교 분석을 위한 충분한 데이터가 없습니다.")
-        else:
-            st.info("ℹ️ 비교 분석을 위해서는 최소 2개 이상의 회사 데이터가 필요합니다.")
-        
-        # AI 인사이트 표시 (수동 업로드용)
-        if SessionManager.is_data_available('manual_financial_insight'):
-            st.markdown("---")
-            st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
-            st.markdown(st.session_state.manual_financial_insight)
-
-def render_integrated_insight_tab():
-    """통합 인사이트 탭 렌더링"""
-    st.subheader("🧠 통합 인사이트 생성")
-    
-    # 분석 상태 표시
-    if SessionManager.is_data_available('integrated_insight'):
-        status = SessionManager.get_data_status('integrated_insight')
-        if status.get('completed'):
-            st.success(f"✅ 통합 인사이트 완료 ({status.get('timestamp', '시간 정보 없음')})")
-    
-    if st.button("🚀 통합 인사이트 생성", type="primary"):
-        # 사용 가능한 인사이트들 수집
-        available_insights = []
-        
-        if SessionManager.is_data_available('financial_insight'):
-            available_insights.append(("자동 재무분석", st.session_state.financial_insight))
-        
-        if SessionManager.is_data_available('manual_financial_insight'):
-            available_insights.append(("수동 재무분석", st.session_state.manual_financial_insight))
-        
-        if SessionManager.is_data_available('google_news_insight'):
-            available_insights.append(("구글 뉴스 분석", st.session_state.google_news_insight))
-        
-        if available_insights:
-            with st.spinner("모든 인사이트를 통합 분석 중..."):
-                try:
-                    openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
-                    
-                    # 모든 인사이트를 하나의 텍스트로 결합
-                    combined_insights = "\n\n".join([f"=== {title} ===\n{insight}" for title, insight in available_insights])
-                    
-                    integrated_insight = openai.generate_integrated_insight(
-                        combined_insights,
-                        None
-                    )
-                    SessionManager.save_data('integrated_insight', integrated_insight, 'integrated_insight')
-                    st.success("✅ 통합 인사이트가 생성되었습니다!")
-                    
-                except Exception as e:
-                    st.error(f"통합 인사이트 생성 중 오류가 발생했습니다: {str(e)}")
-        else:
-            st.warning("⚠️ 최소 하나의 인사이트(재무 분석 또는 구글 뉴스)가 필요합니다.")
-    
-    # 통합 인사이트 결과 표시
-    if SessionManager.is_data_available('integrated_insight'):
-        st.subheader("🤖 통합 인사이트 결과")
-        st.markdown(st.session_state.integrated_insight)
-    else:
-        st.info("재무 분석과 구글 뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
-
-def render_report_generation_tab():
-    """보고서 생성 탭 렌더링 - PDF만"""
-    st.subheader("📄 PDF 보고서 생성 & 이메일 서비스 바로가기")
-
-    # 2열 레이아웃: PDF 생성 + 이메일 입력
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        st.write("**📄 PDF 보고서 다운로드**")
-
-        # 사용자 입력
-        report_target = st.text_input("보고 대상", value="SK이노베이션 경영진")
-        report_author = st.text_input("보고자", value="")
-        show_footer = st.checkbox(
-            "푸터 문구 표시(※ 본 보고서는 대시보드에서 자동 생성되었습니다.)", 
-            value=False
-        )
-
-        # ✅ 데이터 우선순위: DART 자동 > 수동 업로드
-        financial_data_for_report = None
-        if SessionManager.is_data_available('financial_data'):
-            financial_data_for_report = st.session_state.financial_data
-        elif SessionManager.is_data_available('manual_financial_data'):
-            financial_data_for_report = st.session_state.manual_financial_data
-
-        # ✅ PDF 생성 섹션
-        if EXPORT_AVAILABLE:
-            st.markdown("---")
-            st.markdown("**🚀 한글 PDF 생성 (NanumGothic 폰트)**")
-            
-            # ✅ 버튼을 직접 만들고 클릭 처리
-            if st.button("📄 PDF 보고서 생성", type="primary", key="advanced_pdf_btn"):
-                success = handle_pdf_generation_button(
-                    button_clicked=True,
-                    financial_data=financial_data_for_report,
-                    news_data=st.session_state.get('google_news_data'),
-                    insights=collect_all_insights(),
-                    quarterly_df=st.session_state.get('quarterly_data'),
-                    chart_df=st.session_state.get('chart_df'),
-                    gap_analysis_df=st.session_state.get('gap_analysis_df'),
-                    report_target=report_target.strip() or "SK이노베이션 경영진",
-                    report_author=report_author.strip() or "AI 분석 시스템",
-                    show_footer=show_footer
-                )
-        else:
-            st.warning("⚠️ PDF 생성 기능이 비활성화되어 있습니다.")
-            st.info("💡 export.py 파일과 reportlab 패키지를 확인해주세요.")
-
-    with col2:
-        st.write("**📧 이메일 서비스 바로가기**")
-
-        mail_providers = {
-            "네이버": "https://mail.naver.com/",
-            "구글(Gmail)": "https://mail.google.com/",
-            "다음": "https://mail.daum.net/",
-            "네이트": "https://mail.nate.com/",
-            "야후": "https://mail.yahoo.com/",
-            "아웃룩(Outlook)": "https://outlook.live.com/",
-            "프로톤메일(ProtonMail)": "https://mail.proton.me/",
-            "조호메일(Zoho Mail)": "https://mail.zoho.com/",
-            "GMX 메일": "https://www.gmx.com/",
-            "아이클라우드(iCloud Mail)": "https://www.icloud.com/mail",
-            "메일닷컴(Mail.com)": "https://www.mail.com/",
-            "AOL 메일": "https://mail.aol.com/"
-        }
-
-        selected_provider = st.selectbox(
-            "메일 서비스 선택",
-            list(mail_providers.keys()),
-            key="mail_provider_select"
-        )
-        url = mail_providers[selected_provider]
-
-        st.markdown(
-            f"[{selected_provider} 메일 바로가기]({url})",
-            unsafe_allow_html=True
-        )
-        st.info("선택한 메일 서비스 링크가 새 탭에서 열립니다.")
-
-def main():
-    """메인 함수"""
-    # 세션 상태 초기화
-    SessionManager.initialize()
-    
-    st.title("⚡SK Profit+: 손익 개선 전략 대시보드")
-    
-    # 마지막 분석 시간 표시
-    if st.session_state.last_analysis_time:
-        st.info(f"🕒 마지막 분석 시간: {st.session_state.last_analysis_time}")
-    
-    # Export 모듈 상태 표시 (사이드바로 이동)
-    with st.sidebar:
-        st.header("📊 시스템 상태")
-        if EXPORT_AVAILABLE:
-            st.success("✅ PDF/Excel 보고서 생성 가능")
-        else:
-            st.warning("⚠️ PDF/Excel 생성 불가")
-            st.caption("export.py 및 reportlab 확인 필요")
-            
-        # 데이터 상태 요약
-        st.header("📋 데이터 현황")
-        data_summary = {
-            "재무 데이터": SessionManager.is_data_available('financial_data'),
-            "분기별 데이터": SessionManager.is_data_available('quarterly_data'), 
-            "뉴스 데이터": SessionManager.is_data_available('google_news_data'),
-            "통합 인사이트": SessionManager.is_data_available('integrated_insight')
-        }
-        
-        for name, available in data_summary.items():
-            if available:
-                st.success(f"✅ {name}")
-            else:
-                st.info(f"⏳ {name}")
-    
-    # 탭 생성
-    tabs = st.tabs([
-        "📈 재무 분석", 
-        "📁 파일 업로드", 
-        "🔍 뉴스 분석", 
-        "🧠 통합 인사이트", 
-        "📄 보고서 생성"
-    ])
-    
-    # 각 탭 렌더링
-    with tabs[0]:  # 재무분석 탭
-        render_financial_analysis_tab()
-    
-    with tabs[1]:  # 수동 파일 업로드 탭
-        render_manual_upload_tab()
-    
-    with tabs[2]:  # Google News 수집 탭
-        create_google_news_tab()
-    
-    with tabs[3]:  # 통합 인사이트 탭
-        render_integrated_insight_tab()
-    
-    with tabs[4]:  # 보고서 생성 탭
-        render_report_generation_tab()
-
-if __name__ == "__main__":
-    main()
+                st.info("📊
