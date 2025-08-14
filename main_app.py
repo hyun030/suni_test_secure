@@ -73,17 +73,17 @@ st.markdown("""
 .md-card ul {margin:6px 0 0 18px; line-height:1.6}
 .section-title {font-weight:800; font-size:18px; display:flex; gap:8px; align-items:center; margin-bottom:8px}
 .section-title .emoji {font-size:20px}
-.subcard-wrap {display:grid; gap:12px; margin-top:10px}
-.subcard {background:#fafafa; border:1px solid #eef1f4; border-radius:10px; padding:12px 14px;}
 </style>
 """, unsafe_allow_html=True)
 
+# --- 마크다운 결과를 '큰 소제목(## 1., ## 2., ...)' 기준 카드로 렌더 ---
 def render_insight_as_cards(text: str):
     """
-    1) HTML 포함이면 그대로 렌더
-    2) '## 1. ...' 같은 번호형 H2 제목 → H2 단위 카드
-    3) 뉴스/벤치마킹 리포트(시장트렌드/주요활동/아이디어TOP2/기타) → 각 섹션 카드 + 아이디어 1·2는 서브카드
-    4) 그래도 못 나누면 5-2~5-5(📊/⚠️/📈/🎯) 기준
+    1) 우선 HTML이 섞여 있으면 그대로 렌더
+    2) 그 외에는 '## 1. ...' 같은 번호 달린 H2 제목 기준으로 카드를 만든다.
+       - H2 단위로 하나의 카드
+    3) 만약 H2 제목을 전혀 못 찾으면 (예: 5-2 ~ 5-5만 있는 경우)
+       기존의 📊/⚠️/📈/🎯 4섹션 카드 분해 로직을 사용한다.
     """
     if not text:
         return
@@ -94,94 +94,55 @@ def render_insight_as_cards(text: str):
         return
 
     import re
+
     s = text.strip()
 
-    # 2) 번호형 H2 ('## 1. ...')를 먼저 시도
-    h2_matches = list(re.finditer(r"(?m)^##\s*\d+\.\s.*$", s))
+    # 2) '## 1. ...' 같은 상위 H2 제목 기준으로 섹션 분리
+    #    - 캡쳐된 제목 라인(heading_line)과 그 다음 제목 전까지의 본문(body)을 카드로 묶음
+    h2_pattern = re.compile(r"(?m)^##\s*\d+\.\s.*$")
+    h2_matches = list(h2_pattern.finditer(s))
+
     if h2_matches:
-        def _slice(start, nxt=None):
-            chunk = s[start: nxt].strip() if nxt else s[start:].strip()
-            p = chunk.find("\n")
-            return (chunk if p == -1 else chunk[:p].strip().lstrip("#").strip(),
-                    "" if p == -1 else chunk[p+1:].strip())
+        # 마지막 섹션까지 본문을 잘라내기 위한 보조 함수
+        def _section_slice(start_idx, next_start_idx=None):
+            chunk = s[start_idx: next_start_idx].strip() if next_start_idx else s[start_idx:].strip()
+            # 첫 줄(제목)과 나머지 본문 분리
+            first_newline = chunk.find("\n")
+            if first_newline == -1:
+                heading_line = chunk
+                body = ""
+            else:
+                heading_line = chunk[:first_newline].strip()
+                body = chunk[first_newline+1:].strip()
+            return heading_line, body
 
         for i, m in enumerate(h2_matches):
             start = m.start()
-            nxt = h2_matches[i+1].start() if i+1 < len(h2_matches) else None
-            title, body = _slice(start, nxt)
+            next_start = h2_matches[i+1].start() if i+1 < len(h2_matches) else None
+            heading_line, body = _section_slice(start, next_start)
+
+            # "## " 제거한 제목만 표시
+            display_title = heading_line.lstrip("#").strip()
+
+            # 카드 래퍼 + 제목
             st.markdown(
-                f"""<div class="md-card">
-                        <div class="section-title"><span class="emoji">📑</span><span>{title}</span></div>
-                    </div>""",
+                f"""
+<div class="md-card">
+  <div class="section-title"><span class="emoji">📑</span><span>{display_title}</span></div>
+</div>
+""",
                 unsafe_allow_html=True,
             )
+            # 본문은 마크다운 그대로 렌더
             if body:
                 st.markdown(body)
+
         return
 
-    # 3) 뉴스/벤치마킹 리포트 섹션 카드화
-    # 섹션 제목 후보들(줄 시작에 있을 수 있고, '### ' 등 헤딩마크가 붙을 수도 있어서 옵션 처리)
-    news_titles = [
-        r"(?:#+\s*)?시장\s*트렌드",
-        r"(?:#+\s*)?주목해야\s*할\s*경쟁사의\s*활동",
-        r"(?:#+\s*)?핵심\s*벤치마킹\s*아이디어\s*TOP\s*2",
-        r"(?:#+\s*)?기타\s*주목할\s*만한\s*활동",
-    ]
-    # lookahead로 제목 경계 유지하며 split
-    news_split = re.split(r"(?=^(?:%s)\s*$)" % "|".join(news_titles), s, flags=re.MULTILINE)
-    # news_split 에는 공백/기타가 섞일 수 있으니 정리
-    blocks = [b.strip() for b in news_split if b.strip()]
-
-    def _is_news_title(line: str) -> bool:
-        return any(re.match(rf"^(?:{pat})\s*$", line) for pat in news_titles)
-
-    if blocks and any(_is_news_title(b.splitlines()[0]) for b in blocks):
-        for blk in blocks:
-            lines = blk.splitlines()
-            head = lines[0].lstrip("#").strip()
-            body = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
-
-            # 카드 헤더
-            st.markdown(
-                f"""<div class="md-card">
-                        <div class="section-title"><span class="emoji">🗂️</span><span>{head}</span></div>""",
-                unsafe_allow_html=True,
-            )
-
-            # "핵심 벤치마킹 아이디어 TOP 2" 내부의 아이디어 1/2 서브카드 분리
-            if re.search(r"핵심\s*벤치마킹\s*아이디어\s*TOP\s*2", head):
-                # '### 💡 아이디어 n:' 형태 또는 '아이디어 n:' 형태 모두 허용
-                idea_chunks = re.split(r"(?=^.*아이디어\s*\d+\s*:.*$)", body, flags=re.MULTILINE)
-                idea_chunks = [c.strip() for c in idea_chunks if c.strip()]
-
-                # 서브카드 묶음 래퍼
-                st.markdown('<div class="subcard-wrap">', unsafe_allow_html=True)
-
-                for ch in idea_chunks:
-                    first_nl = ch.find("\n")
-                    idea_title = (ch if first_nl == -1 else ch[:first_nl]).strip().lstrip("#").strip()
-                    idea_body = "" if first_nl == -1 else ch[first_nl+1:].strip()
-
-                    st.markdown(
-                        f"""<div class="subcard">
-                                <div class="section-title" style="font-size:16px"><span class="emoji">💡</span><span>{idea_title}</span></div>
-                            </div>""",
-                        unsafe_allow_html=True,
-                    )
-                    if idea_body:
-                        st.markdown(idea_body)
-
-                st.markdown("</div></div>", unsafe_allow_html=True)  # subcard-wrap, md-card 닫기
-            else:
-                # 일반 섹션은 본문만
-                if body:
-                    st.markdown(body)
-                st.markdown("</div>", unsafe_allow_html=True)  # md-card 닫기
-        return
-
-    # 4) 마지막 폴백: 5-2~5-5 템플릿(📊/⚠️/📈/🎯)
+    # 3) H2 제목이 전혀 없으면, 기존의 5-2~5-5 템플릿(📊/⚠️/📈/🎯) 기준으로 카드 분해
     titles = ["📊 경쟁사 비교 분석", "⚠️ 위험신호", "📈 전략방안", "🎯 우선순위"]
     parts = re.split(r"(?=^(?:📊 경쟁사 비교 분석|⚠️ 위험신호|📈 전략방안|🎯 우선순위)\s*$)", s, flags=re.MULTILINE)
+
     found_any = False
     for part in parts:
         part = part.strip()
@@ -192,9 +153,11 @@ def render_insight_as_cards(text: str):
             found_any = True
             body = part[len(found):].lstrip()
             st.markdown(
-                f"""<div class="md-card">
-                        <div class="section-title"><span class="emoji">{found.split()[0]}</span><span>{found}</span></div>
-                    </div>""",
+                f"""
+<div class="md-card">
+  <div class="section-title"><span class="emoji">{found.split()[0]}</span><span>{found}</span></div>
+</div>
+""",
                 unsafe_allow_html=True,
             )
             if body:
@@ -534,9 +497,88 @@ def render_financial_results():
     st.subheader("💰 손익계산서(연간)")
     final_df = st.session_state.financial_data
     
+    # 탭 생성
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비 분석", "📈 변동비 분석", "💰 공헌이익 분석"])
+    
     # 표시용 컬럼만 표시 (원시값 제외)
     display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
-    st.markdown("**📋 정리된 재무지표 (표시값)**")
+    
+    with tab1:
+        st.markdown("**📋 기본 손익계산서**")
+        # 기본 손익계산서 항목들만 필터링
+        basic_items = ['매출액', '매출원가', '매출총이익', '판매비와관리비', '영업이익', '영업외수익', '영업외비용', '당기순이익']
+        basic_df = final_df[final_df['구분'].isin(basic_items)]
+        st.dataframe(
+            basic_df[display_cols].set_index('구분'), 
+            use_container_width=True,
+            column_config={
+                "구분": st.column_config.TextColumn("구분", width="medium")
+            }
+        )
+    
+    with tab2:
+        st.markdown("**🏢 고정비 분석**")
+        # 고정비 관련 항목들만 필터링 (인건비만 표시)
+        fixed_items = ['인건비']
+        fixed_df = final_df[final_df['구분'].isin(fixed_items)]
+        if not fixed_df.empty:
+            st.dataframe(
+                fixed_df[display_cols].set_index('구분'), 
+                use_container_width=True,
+                column_config={
+                    "구분": st.column_config.TextColumn("구분", width="medium")
+                }
+            )
+        else:
+            st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
+    
+    with tab3:
+        st.markdown("**📈 변동비 분석**")
+        # 변동비 관련 항목들만 필터링 (매출원가만 표시)
+        variable_items = ['매출원가']
+        variable_df = final_df[final_df['구분'].isin(variable_items)]
+        if not variable_df.empty:
+            st.dataframe(
+                variable_df[display_cols].set_index('구분'), 
+                use_container_width=True,
+                column_config={
+                    "구분": st.column_config.TextColumn("구분", width="medium")
+                }
+            )
+        else:
+            st.info("💡 매출원가 데이터가 수집되지 않았습니다. DART API에서 매출원가 데이터를 확인해보세요.")
+    
+    with tab4:
+        st.markdown("**💰 공헌이익 분석**")
+        # 공헌이익 관련 항목들만 필터링
+        contribution_items = ['매출액', '매출원가', '변동비', '공헌이익', '고정비', '영업이익']
+        contribution_df = final_df[final_df['구분'].isin(contribution_items)]
+        if not contribution_df.empty:
+            st.dataframe(
+                contribution_df[display_cols].set_index('구분'), 
+                use_container_width=True,
+                column_config={
+                    "구분": st.column_config.TextColumn("구분", width="medium")
+                }
+            )
+            
+            # 공헌이익 계산 공식 설명
+            st.markdown("---")
+            st.markdown("**📝 공헌이익 계산 공식**")
+            st.markdown("""
+            ```
+            공헌이익 = 매출액 - 매출원가 - 변동비
+            공헌이익률 = (공헌이익 / 매출액) × 100%
+            
+            영업이익 = 공헌이익 - 고정비
+            ```
+            """)
+        else:
+            st.info("💡 공헌이익 데이터가 수집되지 않았습니다.")
+    
+    # 전체 데이터 표시 (기존 방식)
+    st.markdown("---")
+    st.markdown("**📋 전체 재무지표 (표시값)**")
     st.dataframe(
         final_df[display_cols].set_index('구분'), 
         use_container_width=True,
@@ -680,10 +722,14 @@ def render_financial_results():
                         # ✅ 범례 압축 옵션만 적용 (수치 표시는 차트 함수에서 처리)
                         if compact_legend:
                             flexible_chart.update_layout(
+                                title={
+                                    'x': 0.0,  # ✅ 제목 왼쪽 정렬
+                                    'xanchor': 'left'  # ✅ 왼쪽 기준점
+                                },
                                 legend=dict(
                                     orientation="h",
                                     yanchor="bottom",
-                                    y=-0.25,
+                                    y=-0.35,  # ✅ 더 아래로 이동 (-0.25에서 -0.35로)
                                     xanchor="center",
                                     x=0.5,
                                     font=dict(size=8),
@@ -691,7 +737,15 @@ def render_financial_results():
                                     bordercolor="gray",
                                     borderwidth=1
                                 ),
-                                margin=dict(b=120)
+                                margin=dict(b=140)  # ✅ 하단 여백 증가 (120에서 140으로)
+                            )
+                        else:
+                            # 범례 압축 안 할 때도 제목 왼쪽 정렬 적용
+                            flexible_chart.update_layout(
+                                title={
+                                    'x': 0.0,  # ✅ 제목 왼쪽 정렬
+                                    'xanchor': 'left'  # ✅ 왼쪽 기준점
+                                }
                             )
                         
                         # 차트 높이 적용
@@ -744,7 +798,7 @@ def render_financial_results():
         st.markdown("---")
         st.subheader("🤖 AI 재무 인사이트")
         render_insight_as_cards(st.session_state.financial_insight)
-
+        
 def render_manual_upload_tab():
     """수동 파일 업로드 탭 렌더링"""
     st.subheader("📁 파일 업로드 분석")
@@ -797,9 +851,88 @@ def render_manual_upload_tab():
         st.subheader("💰 손익계산서(연간)")
         final_df = st.session_state.manual_financial_data
         
+        # 탭 생성 (수동 업로드용)
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비 분석", "📈 변동비 분석", "💰 공헌이익 분석"])
+        
         # 표시용 컬럼만 표시
         display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
-        st.markdown("**📋 정리된 재무지표 (표시값)**")
+        
+        with tab1:
+            st.markdown("**📋 기본 손익계산서**")
+            # 기본 손익계산서 항목들만 필터링
+            basic_items = ['매출액', '매출원가', '매출총이익', '판매비와관리비', '영업이익', '영업외수익', '영업외비용', '당기순이익']
+            basic_df = final_df[final_df['구분'].isin(basic_items)]
+            st.dataframe(
+                basic_df[display_cols].set_index('구분'), 
+                use_container_width=True,
+                column_config={
+                    "구분": st.column_config.TextColumn("구분", width="medium")
+                }
+            )
+        
+        with tab2:
+            st.markdown("**🏢 고정비 분석**")
+            # 고정비 관련 항목들만 필터링 (인건비만 표시)
+            fixed_items = ['인건비']
+            fixed_df = final_df[final_df['구분'].isin(fixed_items)]
+            if not fixed_df.empty:
+                st.dataframe(
+                    fixed_df[display_cols].set_index('구분'), 
+                    use_container_width=True,
+                    column_config={
+                        "구분": st.column_config.TextColumn("구분", width="medium")
+                    }
+                )
+            else:
+                st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
+        
+        with tab3:
+            st.markdown("**📈 변동비 분석**")
+            # 변동비 관련 항목들만 필터링 (매출원가만 표시)
+            variable_items = ['매출원가']
+            variable_df = final_df[final_df['구분'].isin(variable_items)]
+            if not variable_df.empty:
+                st.dataframe(
+                    variable_df[display_cols].set_index('구분'), 
+                    use_container_width=True,
+                    column_config={
+                        "구분": st.column_config.TextColumn("구분", width="medium")
+                    }
+                )
+            else:
+                st.info("💡 매출원가 데이터가 수집되지 않았습니다. DART API에서 매출원가 데이터를 확인해보세요.")
+        
+        with tab4:
+            st.markdown("**💰 공헌이익 분석**")
+            # 공헌이익 관련 항목들만 필터링
+            contribution_items = ['매출액', '매출원가', '변동비', '공헌이익', '고정비', '영업이익']
+            contribution_df = final_df[final_df['구분'].isin(contribution_items)]
+            if not contribution_df.empty:
+                st.dataframe(
+                    contribution_df[display_cols].set_index('구분'), 
+                    use_container_width=True,
+                    column_config={
+                        "구분": st.column_config.TextColumn("구분", width="medium")
+                    }
+                )
+                
+                # 공헌이익 계산 공식 설명
+                st.markdown("---")
+                st.markdown("**📝 공헌이익 계산 공식**")
+                st.markdown("""
+                ```
+                공헌이익 = 매출액 - 매출원가 - 변동비
+                공헌이익률 = (공헌이익 / 매출액) × 100%
+                
+                영업이익 = 공헌이익 - 고정비
+                ```
+                """)
+            else:
+                st.info("💡 공헌이익 데이터가 수집되지 않았습니다.")
+        
+        # 전체 데이터 표시 (기존 방식)
+        st.markdown("---")
+        st.markdown("**📋 전체 재무지표 (표시값)**")
         st.dataframe(final_df[display_cols].set_index('구분'), use_container_width=True)
        
         # 분기별 트렌드 차트 추가 (수동 업로드용)
@@ -927,10 +1060,14 @@ def render_manual_upload_tab():
                             # ✅ 범례 압축 옵션만 적용
                             if compact_legend_manual:
                                 flexible_chart_manual.update_layout(
+                                    title={
+                                        'x': 0.0,  # ✅ 제목 왼쪽 정렬
+                                        'xanchor': 'left'  # ✅ 왼쪽 기준점
+                                    },
                                     legend=dict(
                                         orientation="h",
                                         yanchor="bottom",
-                                        y=-0.25,
+                                        y=-0.35,  # ✅ 더 아래로 이동
                                         xanchor="center",
                                         x=0.5,
                                         font=dict(size=8),
@@ -938,7 +1075,15 @@ def render_manual_upload_tab():
                                         bordercolor="gray",
                                         borderwidth=1
                                     ),
-                                    margin=dict(b=120)
+                                    margin=dict(b=140)  # ✅ 하단 여백 증가
+                                )
+                            else:
+                                # 범례 압축 안 할 때도 제목 왼쪽 정렬 적용
+                                flexible_chart_manual.update_layout(
+                                    title={
+                                        'x': 0.0,  # ✅ 제목 왼쪽 정렬
+                                        'xanchor': 'left'  # ✅ 왼쪽 기준점
+                                    }
                                 )
                             
                             flexible_chart_manual.update_layout(height=chart_height_manual)
@@ -1148,7 +1293,7 @@ def main():
     # 탭 생성
     tabs = st.tabs([
         "📈 재무 분석", 
-        "📁 파일 업로드", 
+        "📁 재무 분석(파일 업로드)", 
         "🔍 뉴스 분석", 
         "🧠 통합 인사이트", 
         "📄 보고서 생성"
