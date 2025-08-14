@@ -184,11 +184,11 @@ class SessionManager:
             st.session_state[insight_type] = data
         st.session_state.last_analysis_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-                 # 분석 상태 업데이트
-         if data_type not in st.session_state.analysis_status:
-             st.session_state.analysis_status[data_type] = {}
-         st.session_state.analysis_status[data_type]['completed'] = True
-         st.session_state.analysis_status[data_type]['timestamp'] = st.session_state.last_analysis_time
+        # 분석 상태 업데이트
+        if data_type not in st.session_state.analysis_status:
+            st.session_state.analysis_status[data_type] = {}
+        st.session_state.analysis_status[data_type]['completed'] = True
+        st.session_state.analysis_status[data_type]['timestamp'] = st.session_state.last_analysis_time
     
     @staticmethod
     def get_data_status(data_type: str) -> dict:
@@ -369,10 +369,10 @@ def render_financial_analysis_tab():
                     else:
                         st.warning("⚠️ 수집된 분기별 데이터가 없습니다.")
 
-                                 if dataframes:
-                     # 데이터 저장
-                     financial_data = processor.merge_company_data(dataframes)
-                     SessionManager.save_data('financial_data', financial_data)
+                if dataframes:
+                    # 데이터 저장
+                    financial_data = processor.merge_company_data(dataframes)
+                    SessionManager.save_data('financial_data', financial_data)
                     
                     if q_data_list:
                         quarterly_data = pd.concat(q_data_list, ignore_index=True)
