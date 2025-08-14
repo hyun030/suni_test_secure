@@ -227,7 +227,7 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = 
         company_colors[company] = get_company_color(company, companies)
     
     # 막대그래프 추가
-    for metric in valid_bar_metrics:
+    for metric_idx, metric in enumerate(valid_bar_metrics):
         for company_idx, company in enumerate(companies):
             company_data = quarterly_df[quarterly_df['회사'] == company]
             
@@ -242,17 +242,22 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = 
                     texttemplate = '%{text:.1f}'
                     textposition = 'auto'
                 
+                # ✅ 단위 포함한 이름 생성 (단위 제거하지 않음)
+                clean_name = metric.replace('(조원)', ' (조원)').replace('(억원)', ' (억원)').replace('(%)', ' (%)')
+                display_name = f"{company} - {clean_name}"
+                
                 fig.add_trace(go.Bar(
                     x=company_data['분기'], 
                     y=company_data[metric],
-                    name=f"{company} - {metric.replace('(조원)', '').replace('(억원)', '').replace('(%)', '')}",
+                    name=display_name,
                     marker=dict(
                         color=company_colors[company],
                         opacity=0.8,
                         line=dict(width=1, color='white')
                     ),
                     yaxis='y2' if valid_line_metrics else 'y',  # 추세선이 있으면 오른쪽 축 사용
-                    offsetgroup=company_idx,
+                    # ✅ offsetgroup 수정: 각 지표별로 다른 그룹 할당
+                    offsetgroup=f"{metric}_{company_idx}",  # 지표명 + 회사 인덱스로 고유하게
                     text=text_values,
                     texttemplate=texttemplate,
                     textposition=textposition,
@@ -284,10 +289,14 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = 
                     textposition = 'top center'
                     mode = 'lines+markers+text'
                 
+                # ✅ 단위 포함한 이름 생성 (단위 제거하지 않음)
+                clean_name = metric.replace('(조원)', ' (조원)').replace('(억원)', ' (억원)').replace('(%)', ' (%)')
+                display_name = f"{company} - {clean_name}"
+                
                 fig.add_trace(go.Scatter(
                     x=company_data['분기'], 
                     y=company_data[metric],
-                    name=f"{company} - {metric.replace('(%)', '').replace('(조원)', '').replace('(억원)', '')}",
+                    name=display_name,
                     mode=mode,
                     line=dict(
                         color=company_colors[company], 
@@ -353,40 +362,55 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = 
         'paper_bgcolor': 'white'
     }
     
-    # Y축 설정 (이중축 vs 단일축)
+    # Y축 설정 (이중축 vs 단일축) - ✅ 단위 표시 개선
     if valid_bar_metrics and valid_line_metrics:
         # 이중축: 추세선(왼쪽) + 막대(오른쪽)
-        bar_names = [m.replace('(조원)', '').replace('(억원)', '') for m in valid_bar_metrics]
-        line_names = [m.replace('(%)', '').replace('(조원)', '').replace('(억원)', '') for m in valid_line_metrics]
+        # ✅ 단위 유지하여 표시
+        bar_names = [m.replace('(조원)', ' (조원)').replace('(억원)', ' (억원)') for m in valid_bar_metrics]
+        line_names = [m.replace('(%)', ' (%)').replace('(조원)', ' (조원)').replace('(억원)', ' (억원)') for m in valid_line_metrics]
         
         layout_kwargs.update({
             'yaxis': dict(
-                title=f"추세선: {', '.join(line_names)}",
+                title=f"추세선: {', '.join(line_names[:2])}{'...' if len(line_names) > 2 else ''}",
                 side='left',
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
             ),
             'yaxis2': dict(
-                title=f"막대: {', '.join(bar_names)}",
+                title=f"막대: {', '.join(bar_names[:2])}{'...' if len(bar_names) > 2 else ''}",
                 side='right',
                 overlaying='y',
                 showgrid=False
             )
         })
     elif valid_bar_metrics:
-        # 막대만 있는 경우
-        has_currency = any('조원' in m or '억원' in m for m in valid_bar_metrics)
-        unit_label = "금액 (조원)" if has_currency else "수치"
+        # 막대만 있는 경우 - ✅ 단위 자동 감지
+        has_trillion = any('조원' in m for m in valid_bar_metrics)
+        has_billion = any('억원' in m for m in valid_bar_metrics)
+        has_percent = any('(%)' in m for m in valid_bar_metrics)
+        
+        if has_trillion:
+            unit_label = "금액 (조원)"
+        elif has_billion:
+            unit_label = "금액 (억원)"
+        elif has_percent:
+            unit_label = "비율 (%)"
+        else:
+            unit_label = "수치"
+        
         layout_kwargs['yaxis'] = dict(title=unit_label, showgrid=True)
     else:
-        # 추세선만 있는 경우
-        is_percentage = any('(%)' in m for m in valid_line_metrics)
-        has_currency = any('조원' in m or '억원' in m for m in valid_line_metrics)
+        # 추세선만 있는 경우 - ✅ 단위 자동 감지
+        has_percent = any('(%)' in m for m in valid_line_metrics)
+        has_trillion = any('조원' in m for m in valid_line_metrics)
+        has_billion = any('억원' in m for m in valid_line_metrics)
         
-        if is_percentage:
+        if has_percent:
             unit_label = "비율 (%)"
-        elif has_currency:
+        elif has_trillion:
             unit_label = "금액 (조원)"
+        elif has_billion:
+            unit_label = "금액 (억원)"
         else:
             unit_label = "수치"
         
