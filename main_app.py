@@ -18,13 +18,11 @@ try:
     # 현재 디렉토리에 export.py가 있는 경우
     from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
     EXPORT_AVAILABLE = True
-    st.success("✅ PDF 생성 모듈 로드 성공")
 except ImportError:
     try:
         # util 폴더에 있는 경우
         from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
         EXPORT_AVAILABLE = True
-        st.success("✅ PDF 생성 모듈 로드 성공 (util 경로)")
     except ImportError as e:
         # import 실패 시 대체 함수들 생성
         def create_excel_report(*args, **kwargs):
@@ -805,7 +803,7 @@ def render_manual_upload_tab():
     st.subheader("📁 파일 업로드 분석")
     st.info("💡 DART에서 다운로드한 XBRL 파일을 직접 업로드하여 분석할 수 있습니다.")
 
-    st.warning("⚠️ 주의 - 각 회사의 분기별 XBRL 파일을 올려주세요.")
+    st.warning("⚠️ 주의 - 각 회사의 분기별 XBRL 파일을 업로드해 주세요.")
     
     uploaded_files = st.file_uploader(
         "XBRL 파일 선택 (여러 파일 업로드 가능)",
