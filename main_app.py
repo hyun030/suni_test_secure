@@ -442,15 +442,6 @@ def render_financial_results():
             exclude_cols = ['분기', '회사', '보고서구분', '연도', '분기번호']
             available_metrics = [col for col in all_columns if col not in exclude_cols]
             
-            # 🔍 디버그 정보 표시
-            with st.expander("🔍 데이터 정보 확인"):
-                st.write("**전체 컬럼:**", all_columns)
-                st.write("**사용 가능한 지표:**", available_metrics)
-                st.write("**데이터 행 수:**", len(chart_input))
-                if not chart_input.empty:
-                    st.write("**샘플 데이터:**")
-                    st.dataframe(chart_input.head(2))
-            
             if available_metrics:
                 # 1단계: 회사 선택
                 st.markdown("**🏢 1단계: 표시할 회사 선택**")
@@ -462,19 +453,8 @@ def render_financial_results():
                     help="차트에 표시할 회사를 선택하세요"
                 )
                 
-                # 2단계: 지표 선택 (개선됨 - 더 많은 기본 선택)  
-                st.markdown("**📈 2단계: 분석할 지표 선택**")
-                # ✅ 기본 선택을 더 많이 (최대 6개 또는 전체)
-                default_count = min(6, len(available_metrics))
-                selected_metrics = st.multiselect(
-                    "지표를 선택하세요",
-                    available_metrics,
-                    default=available_metrics[:default_count],  # 최대 6개 기본 선택
-                    help="분석하고 싶은 재무지표를 선택하세요 (갯수 제한 없음)"
-                )
-                
-                # 3단계: 분기 선택
-                st.markdown("**📅 3단계: 표시할 분기 선택**") 
+                # 2단계: 분기 선택 (지표 선택 단계 제거)
+                st.markdown("**📅 2단계: 표시할 분기 선택**") 
                 available_quarters = list(chart_input['분기'].unique()) if '분기' in chart_input.columns else []
                 selected_quarters = st.multiselect(
                     "분기를 선택하세요",
@@ -483,8 +463,8 @@ def render_financial_results():
                     help="특정 분기만 선택 가능합니다"
                 )
                 
-                # 4단계: 차트 구성 (개선된 레이아웃)
-                st.markdown("**📊 4단계: 차트 표시 방식 설정**")
+                # 3단계: 차트 구성 (개선된 레이아웃) - 전체 지표에서 직접 선택
+                st.markdown("**📊 3단계: 차트 표시 방식 설정**")
                 
                 # ✅ 2열로 변경하여 더 넓은 공간 확보
                 col1, col2 = st.columns([1, 1])
@@ -492,14 +472,14 @@ def render_financial_results():
                 with col1:
                     bar_metrics = st.multiselect(
                         "📊 막대로 표시할 지표",
-                        selected_metrics,  # 위에서 선택한 지표만 옵션으로
+                        available_metrics,  # ✅ 전체 지표에서 직접 선택
                         help="절대값 비교에 적합 (매출액, 영업이익 등)\n💡 2-3개 추천"
                     )
                 
                 with col2:
                     line_metrics = st.multiselect(
                         "📈 추세선으로 표시할 지표",
-                        selected_metrics,  # 위에서 선택한 지표만 옵션으로  
+                        available_metrics,  # ✅ 전체 지표에서 직접 선택
                         help="트렌드 분석에 적합 (비율, 성장률 등)\n💡 2-3개 추천"
                     )
                 
@@ -737,20 +717,8 @@ def render_manual_upload_tab():
                         key="manual_companies_select"
                     )
                     
-                    # 2단계: 지표 선택 (개선됨 - 더 많은 기본 선택)
-                    st.markdown("**📈 2단계: 분석할 지표 선택**")
-                    # ✅ 기본 선택을 더 많이 (최대 6개 또는 전체)
-                    default_count = min(6, len(available_metrics))
-                    selected_metrics_manual = st.multiselect(
-                        "지표를 선택하세요",
-                        available_metrics,
-                        default=available_metrics[:default_count],  # 최대 6개 기본 선택
-                        help="분석하고 싶은 재무지표를 선택하세요 (갯수 제한 없음)",
-                        key="manual_metrics_select"
-                    )
-                    
-                    # 3단계: 분기 선택
-                    st.markdown("**📅 3단계: 표시할 분기 선택**")
+                    # 2단계: 분기 선택 (지표 선택 단계 제거)
+                    st.markdown("**📅 2단계: 표시할 분기 선택**")
                     available_quarters = list(chart_input['분기'].unique()) if '분기' in chart_input.columns else []
                     selected_quarters_manual = st.multiselect(
                         "분기를 선택하세요",
@@ -760,8 +728,8 @@ def render_manual_upload_tab():
                         key="manual_quarters_select"
                     )
                     
-                    # 4단계: 차트 구성 (개선된 레이아웃)
-                    st.markdown("**📊 4단계: 차트 표시 방식 설정**")
+                    # 3단계: 차트 구성 (개선된 레이아웃) - 전체 지표에서 직접 선택
+                    st.markdown("**📊 3단계: 차트 표시 방식 설정**")
                     
                     # ✅ 2열로 변경
                     col1, col2 = st.columns([1, 1])
@@ -769,7 +737,7 @@ def render_manual_upload_tab():
                     with col1:
                         bar_metrics_manual = st.multiselect(
                             "📊 막대로 표시할 지표",
-                            selected_metrics_manual,
+                            available_metrics,  # ✅ 전체 지표에서 직접 선택
                             help="절대값 비교에 적합\n💡 2-3개 추천",
                             key="manual_bar_metrics"
                         )
@@ -777,7 +745,7 @@ def render_manual_upload_tab():
                     with col2:
                         line_metrics_manual = st.multiselect(
                             "📈 추세선으로 표시할 지표",
-                            selected_metrics_manual,
+                            available_metrics,  # ✅ 전체 지표에서 직접 선택
                             help="트렌드 분석에 적합\n💡 2-3개 추천",
                             key="manual_line_metrics"
                         )
