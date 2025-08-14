@@ -1,55 +1,4 @@
-if available_metrics:
-                    st.markdown("**📊 차트 설정**")
-                    
-                    # 2개 컬럼으로 나누기
-                    col1, col2 = st.columns([3, 1])
-                    
-                    with col1:
-                        # 지표 선택 (최대 3개)
-                        selected_metrics = st.multiselect(
-                            "📈 표시할 지표 선택 (최대 3개)",
-                            available_metrics,
-                            default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
-                            help="💡 큰 금액(매출액, EBITDA)은 막대, 작은 금액/비율은 꺾은선으로 표시됩니다",
-                            max_selections=3
-                        )
-                        
-                        # 분기 선택
-                        available_quarters = list(chart_input['분기'].unique()) if '분기' in chart_input.columns else []
-                        selected_quarters = st.multiselect(
-                            "📅 표시할 분기 선택",
-                            available_quarters,
-                            default=available_quarters,
-                            help="특정 분기만 보고 싶으면 선택하세요. 전체 선택하면 모든 분기 표시"
-                        )
-                    
-                    with col2:
-                        chart_height = st.selectbox("차트 높이", [400, 500, 600, 700], index=1)
-                        
-                        # 현재 선택된 회사들 표시
-                        if '회사' in chart_input.columns:
-                            current_companies = list(chart_input['회사'].unique())                if available_metrics:
-                    st.markdown("**📊 표시할 지표를 선택하세요**")
-                    col1, col2 = st.columns([3, 1])
-                    
-                    with col1:
-                        # 추천 조합 표시
-                        st.info("💡 **추천 조합**: 비슷한 유형 2-3개 선택 (예: 매출액+매출원가, 또는 영업이익률+순이익률)")
-                        
-                        selected_metrics = st.multiselect(
-                            "지표 선택 (최대 3개 권장)",
-                            available_metrics,
-                            default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
-                            help="💡 실제 데이터에 있는 지표만 표시됩니다. 너무 많이 선택하면 차트가 복잡해집니다",
-                            max_selections=4  # 최대 4개로 제한
-                        )
-                        
-                        # 선택된 지표가 너무 많으면 경고
-                        if len(selected_metrics) > 3:
-                            st.warning("⚠️ 지표가 너무 많으면 차트가 복잡해집니다. 3개 이하 권장")
-                    
-                    with col2:
-                        chart_height = st.select# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -481,25 +430,55 @@ def render_financial_results():
             if not chart_input.empty:
                 st.caption("📋 **데이터 샘플 (처음 3행)**:")
                 st.dataframe(chart_input.head(3), use_container_width=True)
-            
+
             if available_metrics:
-                st.markdown("**📊 표시할 지표를 선택하세요**")
-                col1, col2 = st.columns([3, 1])
+                st.markdown("**📊 차트 설정**")
+                
+                # 3개 컬럼으로 나누기
+                col1, col2, col3 = st.columns([2, 2, 1])
                 
                 with col1:
-                    selected_metrics = st.multiselect(
-                        "지표 선택",
-                        available_metrics,
-                        default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
-                        help="💡 실제 데이터에 있는 지표만 표시됩니다. 금액 지표는 막대그래프, 비율(%) 지표는 꺾은선으로 표시됩니다"
+                    # 회사 선택 (실제 데이터에서 가져오기)
+                    available_companies = list(chart_input['회사'].unique()) if '회사' in chart_input.columns else []
+                    selected_companies_chart = st.multiselect(
+                        "🏢 표시할 회사 선택",
+                        available_companies,
+                        default=available_companies,  # 기본적으로 모든 회사 선택
+                        help="차트에 표시할 회사를 선택하세요"
                     )
                 
                 with col2:
+                    # 지표 선택 (최대 3개, 실제 데이터에서 가져오기)
+                    selected_metrics = st.multiselect(
+                        "📈 표시할 지표 선택 (최대 3개)",
+                        available_metrics,
+                        default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
+                        help="💡 실제 데이터에 있는 모든 지표가 표시됩니다",
+                        max_selections=3
+                    )
+                
+                with col3:
+                    # 분기 선택 (실제 데이터에서 가져오기)
+                    available_quarters = list(chart_input['분기'].unique()) if '분기' in chart_input.columns else []
+                    selected_quarters = st.multiselect(
+                        "📅 표시할 분기",
+                        available_quarters,
+                        default=available_quarters,  # 기본적으로 모든 분기 선택
+                        help="특정 분기만 선택 가능"
+                    )
+                    
                     chart_height = st.selectbox("차트 높이", [400, 500, 600, 700], index=1)
                 
-                if selected_metrics:
+                # 필터링된 데이터 생성 (실제 선택에 따라)
+                filtered_data = chart_input.copy()
+                if selected_companies_chart and '회사' in filtered_data.columns:
+                    filtered_data = filtered_data[filtered_data['회사'].isin(selected_companies_chart)]
+                if selected_quarters and '분기' in filtered_data.columns:
+                    filtered_data = filtered_data[filtered_data['분기'].isin(selected_quarters)]
+                
+                if selected_metrics and not filtered_data.empty:
                     # 선택된 지표로 차트 생성
-                    flexible_chart = create_flexible_trend_chart(chart_input, selected_metrics)
+                    flexible_chart = create_flexible_trend_chart(filtered_data, selected_metrics)
                     if flexible_chart:
                         # 차트 높이 적용
                         flexible_chart.update_layout(height=chart_height)
@@ -508,7 +487,7 @@ def render_financial_results():
                         st.warning("선택된 지표로 차트를 생성할 수 없습니다.")
                         
                     # 선택된 지표 정보 표시
-                    st.info(f"📊 현재 표시 중인 지표: {', '.join(selected_metrics)}")
+                    st.info(f"📊 현재 표시 중: 회사 {len(selected_companies_chart)}개, 지표 {len(selected_metrics)}개, 분기 {len(selected_quarters)}개")
                 else:
                     st.warning("표시할 지표를 선택해주세요.")
             else:
@@ -600,7 +579,7 @@ def render_manual_upload_tab():
                 except Exception as e:
                     st.error(f"파일 처리 중 오류가 발생했습니다: {str(e)}")
 
-    # 수동 업로드 결과 표시
+    # 수동 업로드 결과 표시 (동일한 UI 구조 적용)
     if SessionManager.is_data_available('manual_financial_data'):
         st.markdown("---")
         st.subheader("💰 손익계산서(연간)")
@@ -616,80 +595,92 @@ def render_manual_upload_tab():
             st.markdown("---")
             st.subheader("📈 분기별 성과 및 추이 분석")
             
-            # 분기별 데이터 요약 정보 표시
             quarterly_df = st.session_state.quarterly_data
             st.info(f"📊 수집된 분기별 데이터: {len(quarterly_df)}개 데이터포인트")
             
-            # 분기별 데이터 요약 통계
             if '보고서구분' in quarterly_df.columns:
                 report_summary = quarterly_df['보고서구분'].value_counts()
                 st.markdown("**📋 수집된 보고서별 데이터 현황**")
                 for report_type, count in report_summary.items():
                     st.write(f"• {report_type}: {count}개")
             
-            # 분기별 데이터 테이블 표시
             st.markdown("**📋 분기별 재무지표 상세 데이터**")
-            # '연간' 행 제거
             quarterly_df = quarterly_df[~quarterly_df["분기"].str.contains("연간")]
             st.dataframe(quarterly_df, use_container_width=True)
             
             if PLOTLY_AVAILABLE:
-                # ✅ 분기가 '연간'이 아닌 행만 차트에 사용
                 chart_input = quarterly_df.copy()
                 if '분기' in chart_input.columns:
                    chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
 
-                # 분기별 재무지표 트렌드
                 st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="manual_quarterly_trend")
                 
-                # ✅ 수동 업로드용 지표 선택 트렌드 차트
+                # 수동 업로드용 지표 선택 차트
                 st.markdown("---")
                 st.subheader("📊 선택 가능한 지표별 트렌드 분석")
                 
-                # 실제 데이터에서 사용 가능한 지표들을 동적으로 확인 (수동 업로드용)
                 all_columns = list(chart_input.columns)
-                st.caption(f"🔍 데이터에 포함된 모든 컬럼: {', '.join(all_columns)}")
-                
-                # 분기, 회사, 보고서구분 제외하고 나머지가 지표들
                 exclude_cols = ['분기', '회사', '보고서구분', '연도', '분기번호']
                 available_metrics = [col for col in all_columns if col not in exclude_cols]
                 
-                st.caption(f"📊 선택 가능한 지표: {', '.join(available_metrics)}")
-                
                 if available_metrics:
-                    st.markdown("**📊 표시할 지표를 선택하세요**")
-                    col1, col2 = st.columns([3, 1])
+                    st.markdown("**📊 차트 설정**")
+                    
+                    col1, col2, col3 = st.columns([2, 2, 1])
                     
                     with col1:
-                        selected_metrics_manual = st.multiselect(
-                            "지표 선택",
-                            available_metrics,
-                            default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
-                            help="💡 실제 데이터에 있는 지표만 표시됩니다. 금액 지표는 막대그래프, 비율(%) 지표는 꺾은선으로 표시됩니다",
-                            key="manual_metrics_select"
+                        available_companies = list(chart_input['회사'].unique()) if '회사' in chart_input.columns else []
+                        selected_companies_manual = st.multiselect(
+                            "🏢 표시할 회사 선택",
+                            available_companies,
+                            default=available_companies,
+                            help="차트에 표시할 회사를 선택하세요",
+                            key="manual_companies_select"
                         )
                     
                     with col2:
+                        selected_metrics_manual = st.multiselect(
+                            "📈 표시할 지표 선택 (최대 3개)",
+                            available_metrics,
+                            default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
+                            help="💡 실제 데이터에 있는 모든 지표가 표시됩니다",
+                            max_selections=3,
+                            key="manual_metrics_select"
+                        )
+                    
+                    with col3:
+                        available_quarters = list(chart_input['분기'].unique()) if '분기' in chart_input.columns else []
+                        selected_quarters_manual = st.multiselect(
+                            "📅 표시할 분기",
+                            available_quarters,
+                            default=available_quarters,
+                            help="특정 분기만 선택 가능",
+                            key="manual_quarters_select"
+                        )
+                        
                         chart_height_manual = st.selectbox("차트 높이", [400, 500, 600, 700], index=1, key="manual_chart_height")
                     
-                    if selected_metrics_manual:
-                        # 선택된 지표로 차트 생성
-                        flexible_chart_manual = create_flexible_trend_chart(chart_input, selected_metrics_manual)
+                    # 필터링된 데이터 생성
+                    filtered_data_manual = chart_input.copy()
+                    if selected_companies_manual and '회사' in filtered_data_manual.columns:
+                        filtered_data_manual = filtered_data_manual[filtered_data_manual['회사'].isin(selected_companies_manual)]
+                    if selected_quarters_manual and '분기' in filtered_data_manual.columns:
+                        filtered_data_manual = filtered_data_manual[filtered_data_manual['분기'].isin(selected_quarters_manual)]
+                    
+                    if selected_metrics_manual and not filtered_data_manual.empty:
+                        flexible_chart_manual = create_flexible_trend_chart(filtered_data_manual, selected_metrics_manual)
                         if flexible_chart_manual:
-                            # 차트 높이 적용
                             flexible_chart_manual.update_layout(height=chart_height_manual)
                             st.plotly_chart(flexible_chart_manual, use_container_width=True, key="manual_flexible_trend")
                         else:
                             st.warning("선택된 지표로 차트를 생성할 수 없습니다.")
                             
-                        # 선택된 지표 정보 표시
-                        st.info(f"📊 현재 표시 중인 지표: {', '.join(selected_metrics_manual)}")
+                        st.info(f"📊 현재 표시 중: 회사 {len(selected_companies_manual)}개, 지표 {len(selected_metrics_manual)}개, 분기 {len(selected_quarters_manual)}개")
                     else:
                         st.warning("표시할 지표를 선택해주세요.")
                 else:
-                    st.warning("사용 가능한 지표가 없습니다. 분기별 데이터를 다시 확인해주세요.")
+                    st.warning("사용 가능한 지표가 없습니다.")
                 
-                # 트렌드 분석
                 st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="manual_gap_trend")
             else:
                 st.info("📊 분기별 차트 모듈이 없습니다.")
