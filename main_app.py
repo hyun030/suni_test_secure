@@ -518,9 +518,9 @@ def render_financial_results():
     
     with tab2:
         st.markdown("**🏢 고정비 분석**")
-        # 고정비 관련 항목들만 필터링 (인건비만 표시)
-        fixed_items = ['인건비']
-        fixed_df = final_df[final_df['구분'].isin(fixed_items)]
+        # 고정비 관련 항목들만 필터링 (감가상각비 제외)
+        fixed_items = ['고정비', '인건비', '임차료', '관리비', '고정비율(%)']
+        fixed_df = final_df[final_df['구분'].isin(fixed_items) | (final_df['구분'].str.startswith('  └') & ~final_df['구분'].str.contains('감가상각비'))]
         if not fixed_df.empty:
             st.dataframe(
                 fixed_df[display_cols].set_index('구분'), 
@@ -529,14 +529,15 @@ def render_financial_results():
                     "구분": st.column_config.TextColumn("구분", width="medium")
                 }
             )
+            st.info("💡 **참고**: 고정비 총액에는 감가상각비가 포함되어 있습니다. (감가상각비는 별도로 계산됨)")
         else:
-            st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
+            st.info("💡 고정비 데이터가 수집되지 않았습니다. DART API에서 인건비, 임차료, 관리비 등의 데이터를 확인해보세요.")
     
     with tab3:
         st.markdown("**📈 변동비 분석**")
-        # 변동비 관련 항목들만 필터링 (매출원가만 표시)
-        variable_items = ['매출원가']
-        variable_df = final_df[final_df['구분'].isin(variable_items)]
+        # 변동비 관련 항목들만 필터링 (계산된 변동비 포함, 감가상각비 제외)
+        variable_items = ['변동비', '판매수수료', '운반배송비', '포장비', '외주가공비', '판촉비', '샘플비', '소모품비', '동력비', '원재료비', '변동비율(%)']
+        variable_df = final_df[final_df['구분'].isin(variable_items) | final_df['구분'].str.startswith('  └')]
         if not variable_df.empty:
             st.dataframe(
                 variable_df[display_cols].set_index('구분'), 
@@ -546,7 +547,7 @@ def render_financial_results():
                 }
             )
         else:
-            st.info("💡 매출원가 데이터가 수집되지 않았습니다. DART API에서 매출원가 데이터를 확인해보세요.")
+            st.info("💡 변동비 데이터가 수집되지 않았습니다. DART API에서 판매수수료, 운반배송비 등의 데이터를 확인해보세요.")
     
     with tab4:
         st.markdown("**💰 공헌이익 분석**")
@@ -872,9 +873,9 @@ def render_manual_upload_tab():
         
         with tab2:
             st.markdown("**🏢 고정비 분석**")
-            # 고정비 관련 항목들만 필터링 (인건비만 표시)
-            fixed_items = ['인건비']
-            fixed_df = final_df[final_df['구분'].isin(fixed_items)]
+            # 고정비 관련 항목들만 필터링 (감가상각비 제외)
+            fixed_items = ['고정비', '인건비', '임차료', '관리비', '고정비율(%)']
+            fixed_df = final_df[final_df['구분'].isin(fixed_items) | (final_df['구분'].str.startswith('  └') & ~final_df['구분'].str.contains('감가상각비'))]
             if not fixed_df.empty:
                 st.dataframe(
                     fixed_df[display_cols].set_index('구분'), 
@@ -883,14 +884,15 @@ def render_manual_upload_tab():
                         "구분": st.column_config.TextColumn("구분", width="medium")
                     }
                 )
+                st.info("💡 **참고**: 고정비 총액에는 감가상각비가 포함되어 있습니다. (감가상각비는 별도로 계산됨)")
             else:
-                st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
+                st.info("💡 고정비 데이터가 수집되지 않았습니다. DART API에서 인건비, 임차료, 관리비 등의 데이터를 확인해보세요.")
         
         with tab3:
             st.markdown("**📈 변동비 분석**")
-            # 변동비 관련 항목들만 필터링 (매출원가만 표시)
-            variable_items = ['매출원가']
-            variable_df = final_df[final_df['구분'].isin(variable_items)]
+            # 변동비 관련 항목들만 필터링 (계산된 변동비 포함, 감가상각비 제외)
+            variable_items = ['변동비', '판매수수료', '운반배송비', '포장비', '외주가공비', '판촉비', '샘플비', '소모품비', '동력비', '원재료비', '변동비율(%)']
+            variable_df = final_df[final_df['구분'].isin(variable_items) | final_df['구분'].str.startswith('  └')]
             if not variable_df.empty:
                 st.dataframe(
                     variable_df[display_cols].set_index('구분'), 
@@ -900,7 +902,7 @@ def render_manual_upload_tab():
                     }
                 )
             else:
-                st.info("💡 매출원가 데이터가 수집되지 않았습니다. DART API에서 매출원가 데이터를 확인해보세요.")
+                st.info("💡 변동비 데이터가 수집되지 않았습니다. DART API에서 판매수수료, 운반배송비 등의 데이터를 확인해보세요.")
         
         with tab4:
             st.markdown("**💰 공헌이익 분석**")
