@@ -9,7 +9,7 @@ from data.preprocess import SKFinancialDataProcessor, FinancialDataProcessor
 from insight.openai_api import OpenAIInsightGenerator
 from visualization.charts import (
     create_sk_bar_chart, create_sk_radar_chart, 
-    create_quarterly_trend_chart, create_gap_trend_chart, 
+    create_quarterly_trend_chart, create_gap_trend_chart, create_flexible_trend_chart,
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
 
@@ -409,10 +409,50 @@ def render_financial_results():
             if '분기' in chart_input.columns:
                chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
 
-            # 분기별 재무지표 트렌드
+            # 분기별 재무지표 트렌드 (기존)
             st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="quarterly_trend")
             
-            # 트렌드 분석
+            # ✅ 새로운 지표 선택 트렌드 차트
+            st.markdown("---")
+            st.subheader("📊 선택 가능한 지표별 트렌드 분석")
+            
+            # 사용 가능한 지표들 확인
+            possible_metrics = ['영업이익률(%)', '매출원가율(%)', '판관비율(%)', '매출총이익률(%)', '매출액(조원)', 'EBITDA', 'CapEx']
+            available_metrics = [metric for metric in possible_metrics if metric in chart_input.columns]
+            
+            if available_metrics:
+                st.markdown("**📊 표시할 지표를 선택하세요**")
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    selected_metrics = st.multiselect(
+                        "지표 선택",
+                        available_metrics,
+                        default=['영업이익률(%)'] if '영업이익률(%)' in available_metrics else available_metrics[:1],
+                        help="여러 지표를 선택하면 한 차트에서 비교할 수 있습니다"
+                    )
+                
+                with col2:
+                    chart_height = st.selectbox("차트 높이", [400, 500, 600, 700], index=1)
+                
+                if selected_metrics:
+                    # 선택된 지표로 차트 생성
+                    flexible_chart = create_flexible_trend_chart(chart_input, selected_metrics)
+                    if flexible_chart:
+                        # 차트 높이 적용
+                        flexible_chart.update_layout(height=chart_height)
+                        st.plotly_chart(flexible_chart, use_container_width=True, key="flexible_trend")
+                    else:
+                        st.warning("선택된 지표로 차트를 생성할 수 없습니다.")
+                        
+                    # 선택된 지표 정보 표시
+                    st.info(f"📊 현재 표시 중인 지표: {', '.join(selected_metrics)}")
+                else:
+                    st.warning("표시할 지표를 선택해주세요.")
+            else:
+                st.warning("사용 가능한 지표가 없습니다. 분기별 데이터를 다시 확인해주세요.")
+            
+            # 기존 트렌드 분석 (영업이익률만)
             st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="gap_trend")
         else:
             st.info("📊 분기별 차트 모듈이 없습니다.")
@@ -539,6 +579,47 @@ def render_manual_upload_tab():
 
                 # 분기별 재무지표 트렌드
                 st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="manual_quarterly_trend")
+                
+                # ✅ 수동 업로드용 지표 선택 트렌드 차트
+                st.markdown("---")
+                st.subheader("📊 선택 가능한 지표별 트렌드 분석")
+                
+                # 사용 가능한 지표들 확인
+                possible_metrics = ['영업이익률(%)', '매출원가율(%)', '판관비율(%)', '매출총이익률(%)', '매출액(조원)', 'EBITDA', 'CapEx']
+                available_metrics = [metric for metric in possible_metrics if metric in chart_input.columns]
+                
+                if available_metrics:
+                    st.markdown("**📊 표시할 지표를 선택하세요**")
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        selected_metrics_manual = st.multiselect(
+                            "지표 선택",
+                            available_metrics,
+                            default=['영업이익률(%)'] if '영업이익률(%)' in available_metrics else available_metrics[:1],
+                            help="여러 지표를 선택하면 한 차트에서 비교할 수 있습니다",
+                            key="manual_metrics_select"
+                        )
+                    
+                    with col2:
+                        chart_height_manual = st.selectbox("차트 높이", [400, 500, 600, 700], index=1, key="manual_chart_height")
+                    
+                    if selected_metrics_manual:
+                        # 선택된 지표로 차트 생성
+                        flexible_chart_manual = create_flexible_trend_chart(chart_input, selected_metrics_manual)
+                        if flexible_chart_manual:
+                            # 차트 높이 적용
+                            flexible_chart_manual.update_layout(height=chart_height_manual)
+                            st.plotly_chart(flexible_chart_manual, use_container_width=True, key="manual_flexible_trend")
+                        else:
+                            st.warning("선택된 지표로 차트를 생성할 수 없습니다.")
+                            
+                        # 선택된 지표 정보 표시
+                        st.info(f"📊 현재 표시 중인 지표: {', '.join(selected_metrics_manual)}")
+                    else:
+                        st.warning("표시할 지표를 선택해주세요.")
+                else:
+                    st.warning("사용 가능한 지표가 없습니다. 분기별 데이터를 다시 확인해주세요.")
                 
                 # 트렌드 분석
                 st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="manual_gap_trend")
