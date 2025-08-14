@@ -160,6 +160,23 @@ class QuarterlyDataCollector:
             '판관비':     find_amount(['판매비와관리비', '판관비', 'selling and administrative']),
             '판매비':     find_amount(['판매비', 'selling expenses']),
             '관리비':     find_amount(['관리비', 'administrative expenses']),
+            
+            # 고정비 관련 항목들
+            '감가상각비': find_amount(['감가상각비', 'depreciation', 'depreciation and amortization']),
+            '인건비':     find_amount(['인건비', 'personnel costs', 'employee benefits', '급여', '임금']),
+            '임차료':     find_amount(['임차료', 'rent expense', 'rent']),
+            '관리비':     find_amount(['관리비', 'administrative expenses']),
+            
+            # 변동비 관련 항목들
+            '판매수수료': find_amount(['판매수수료', 'sales commission', 'commission']),
+            '운반배송비': find_amount(['운반배송비', 'shipping cost', 'delivery cost']),
+            '포장비':     find_amount(['포장비', 'packaging cost']),
+            '외주가공비': find_amount(['외주가공비', 'outsourcing cost']),
+            '판촉비':     find_amount(['판촉비', 'promotional cost']),
+            '샘플비':     find_amount(['샘플비', 'sample cost']),
+            '소모품비':   find_amount(['소모품비', 'consumables']),
+            '동력비':     find_amount(['동력비', 'power cost', '전력비']),
+            '원재료비':   find_amount(['원재료비', 'raw material cost']),
         }
 
 
