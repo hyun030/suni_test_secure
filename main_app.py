@@ -442,6 +442,15 @@ def render_financial_results():
             exclude_cols = ['분기', '회사', '보고서구분', '연도', '분기번호']
             available_metrics = [col for col in all_columns if col not in exclude_cols]
             
+            # 🔍 디버그 정보 표시
+            with st.expander("🔍 데이터 정보 확인"):
+                st.write("**전체 컬럼:**", all_columns)
+                st.write("**사용 가능한 지표:**", available_metrics)
+                st.write("**데이터 행 수:**", len(chart_input))
+                if not chart_input.empty:
+                    st.write("**샘플 데이터:**")
+                    st.dataframe(chart_input.head(2))
+            
             if available_metrics:
                 # 1단계: 회사 선택
                 st.markdown("**🏢 1단계: 표시할 회사 선택**")
@@ -453,12 +462,14 @@ def render_financial_results():
                     help="차트에 표시할 회사를 선택하세요"
                 )
                 
-                # 2단계: 지표 선택  
+                # 2단계: 지표 선택 (개선됨 - 더 많은 기본 선택)  
                 st.markdown("**📈 2단계: 분석할 지표 선택**")
+                # ✅ 기본 선택을 더 많이 (최대 6개 또는 전체)
+                default_count = min(6, len(available_metrics))
                 selected_metrics = st.multiselect(
                     "지표를 선택하세요",
                     available_metrics,
-                    default=available_metrics[:3] if len(available_metrics) >= 3 else available_metrics,
+                    default=available_metrics[:default_count],  # 최대 6개 기본 선택
                     help="분석하고 싶은 재무지표를 선택하세요 (갯수 제한 없음)"
                 )
                 
@@ -472,35 +483,61 @@ def render_financial_results():
                     help="특정 분기만 선택 가능합니다"
                 )
                 
-                # 4단계: 차트 구성 (한 줄에 배치)
+                # 4단계: 차트 구성 (개선된 레이아웃)
                 st.markdown("**📊 4단계: 차트 표시 방식 설정**")
-                col1, col2, col3 = st.columns([2, 2, 1])
+                
+                # ✅ 2열로 변경하여 더 넓은 공간 확보
+                col1, col2 = st.columns([1, 1])
                 
                 with col1:
                     bar_metrics = st.multiselect(
                         "📊 막대로 표시할 지표",
                         selected_metrics,  # 위에서 선택한 지표만 옵션으로
-                        help="절대값 비교에 적합 (매출액, 영업이익 등)"
+                        help="절대값 비교에 적합 (매출액, 영업이익 등)\n💡 2-3개 추천"
                     )
                 
                 with col2:
                     line_metrics = st.multiselect(
                         "📈 추세선으로 표시할 지표",
                         selected_metrics,  # 위에서 선택한 지표만 옵션으로  
-                        help="트렌드 분석에 적합 (비율, 성장률 등)"
+                        help="트렌드 분석에 적합 (비율, 성장률 등)\n💡 2-3개 추천"
                     )
                 
-                with col3:
-                    chart_height = st.selectbox("차트 높이", [400, 500, 600, 700], index=1)
+                # ✅ 차트 옵션을 별도 섹션으로 분리
+                st.markdown("**⚙️ 차트 옵션**")
+                opt_col1, opt_col2, opt_col3 = st.columns(3)
                 
-                # 선택 결과 미리보기
-                if bar_metrics or line_metrics:
-                    st.info(f"📊 차트 구성: 막대 {len(bar_metrics)}개 | 추세선 {len(line_metrics)}개")
+                with opt_col1:
+                    chart_height = st.selectbox("차트 높이", [400, 500, 600, 700, 800], index=2)
+                
+                with opt_col2:
+                    show_values = st.checkbox("수치 표시", value=False, help="데이터 포인트에 값 표시")
+                
+                with opt_col3:
+                    compact_legend = st.checkbox("범례 압축", value=True, help="범례를 더 작게 표시")
+                
+                # 선택 결과 및 권장사항 표시
+                total_metrics = len(bar_metrics) + len(line_metrics)
+                if total_metrics > 0:
+                    # 색상으로 구분된 정보 표시
+                    info_col1, info_col2 = st.columns(2)
+                    with info_col1:
+                        st.info(f"📊 막대: {len(bar_metrics)}개")
+                    with info_col2:
+                        st.info(f"📈 추세선: {len(line_metrics)}개")
+                    
+                    # ✅ 가독성 경고 및 권장사항
+                    if total_metrics > 6:
+                        st.warning("⚠️ 지표가 많아 차트가 복잡할 수 있습니다. 6개 이하 권장")
+                    elif len(bar_metrics) > 3:
+                        st.warning("💡 막대 차트가 3개를 초과하면 겹칠 수 있습니다.")
+                    elif len(line_metrics) > 4:
+                        st.warning("💡 추세선이 4개를 초과하면 구분하기 어려울 수 있습니다.")
                     
                     # 겹치는 지표 체크
                     overlap = set(bar_metrics) & set(line_metrics)
                     if overlap:
-                        st.warning(f"⚠️ 중복 선택된 지표: {', '.join(overlap)} (막대와 추세선 모두 표시됩니다)")
+                        st.warning(f"⚠️ 중복 선택: {', '.join(overlap)} (막대와 추세선 모두 표시)")
                 
                 # 필터링된 데이터 생성
                 filtered_data = chart_input.copy()
@@ -511,7 +548,7 @@ def render_financial_results():
                 
                 # 차트 생성 및 표시
                 if (bar_metrics or line_metrics) and not filtered_data.empty:
-                    # ✅ 새로운 차트 함수 호출
+                    # ✅ 새로운 차트 함수 호출 (옵션 추가)
                     flexible_chart = create_flexible_trend_chart(
                         filtered_data, 
                         bar_metrics=bar_metrics, 
@@ -519,12 +556,37 @@ def render_financial_results():
                     )
                     
                     if flexible_chart:
+                        # ✅ 차트 개선 옵션 적용
+                        if show_values:
+                            # 수치 표시 옵션
+                            flexible_chart.update_traces(
+                                texttemplate='%{y:.1f}',
+                                textposition='auto'
+                            )
+                        
+                        if compact_legend:
+                            # 범례 압축 옵션
+                            flexible_chart.update_layout(
+                                legend=dict(
+                                    orientation="h",
+                                    yanchor="bottom",
+                                    y=-0.25,
+                                    xanchor="center",
+                                    x=0.5,
+                                    font=dict(size=8),
+                                    bgcolor="rgba(255,255,255,0.8)",
+                                    bordercolor="gray",
+                                    borderwidth=1
+                                ),
+                                margin=dict(b=120)
+                            )
+                        
                         # 차트 높이 적용
                         flexible_chart.update_layout(height=chart_height)
                         st.plotly_chart(flexible_chart, use_container_width=True, key="flexible_trend")
                         
                         # 선택된 설정 요약
-                        st.success(f"✅ 현재 표시 중: 회사 {len(selected_companies_chart)}개, 분기 {len(selected_quarters)}개")
+                        st.success(f"✅ 현재 표시 중: 회사 {len(selected_companies_chart)}개, 분기 {len(selected_quarters)}개, 총 지표 {total_metrics}개")
                         
                     else:
                         st.warning("선택된 설정으로 차트를 생성할 수 없습니다.")
@@ -675,12 +737,14 @@ def render_manual_upload_tab():
                         key="manual_companies_select"
                     )
                     
-                    # 2단계: 지표 선택
+                    # 2단계: 지표 선택 (개선됨 - 더 많은 기본 선택)
                     st.markdown("**📈 2단계: 분석할 지표 선택**")
+                    # ✅ 기본 선택을 더 많이 (최대 6개 또는 전체)
+                    default_count = min(6, len(available_metrics))
                     selected_metrics_manual = st.multiselect(
                         "지표를 선택하세요",
                         available_metrics,
-                        default=available_metrics[:3] if len(available_metrics) >= 3 else available_metrics,
+                        default=available_metrics[:default_count],  # 최대 6개 기본 선택
                         help="분석하고 싶은 재무지표를 선택하세요 (갯수 제한 없음)",
                         key="manual_metrics_select"
                     )
@@ -696,15 +760,17 @@ def render_manual_upload_tab():
                         key="manual_quarters_select"
                     )
                     
-                    # 4단계: 차트 구성
+                    # 4단계: 차트 구성 (개선된 레이아웃)
                     st.markdown("**📊 4단계: 차트 표시 방식 설정**")
-                    col1, col2, col3 = st.columns([2, 2, 1])
+                    
+                    # ✅ 2열로 변경
+                    col1, col2 = st.columns([1, 1])
                     
                     with col1:
                         bar_metrics_manual = st.multiselect(
                             "📊 막대로 표시할 지표",
                             selected_metrics_manual,
-                            help="절대값 비교에 적합",
+                            help="절대값 비교에 적합\n💡 2-3개 추천",
                             key="manual_bar_metrics"
                         )
                     
@@ -712,16 +778,38 @@ def render_manual_upload_tab():
                         line_metrics_manual = st.multiselect(
                             "📈 추세선으로 표시할 지표",
                             selected_metrics_manual,
-                            help="트렌드 분석에 적합",
+                            help="트렌드 분석에 적합\n💡 2-3개 추천",
                             key="manual_line_metrics"
                         )
                     
-                    with col3:
-                        chart_height_manual = st.selectbox("차트 높이", [400, 500, 600, 700], index=1, key="manual_chart_height")
+                    # ✅ 차트 옵션
+                    st.markdown("**⚙️ 차트 옵션**")
+                    opt_col1, opt_col2, opt_col3 = st.columns(3)
                     
-                    # 선택 결과 미리보기
-                    if bar_metrics_manual or line_metrics_manual:
-                        st.info(f"📊 차트 구성: 막대 {len(bar_metrics_manual)}개 | 추세선 {len(line_metrics_manual)}개")
+                    with opt_col1:
+                        chart_height_manual = st.selectbox("차트 높이", [400, 500, 600, 700, 800], index=2, key="manual_chart_height")
+                    
+                    with opt_col2:
+                        show_values_manual = st.checkbox("수치 표시", value=False, key="manual_show_values")
+                    
+                    with opt_col3:
+                        compact_legend_manual = st.checkbox("범례 압축", value=True, key="manual_compact_legend")
+                    
+                    # 선택 결과 및 권장사항
+                    total_metrics_manual = len(bar_metrics_manual) + len(line_metrics_manual)
+                    if total_metrics_manual > 0:
+                        info_col1, info_col2 = st.columns(2)
+                        with info_col1:
+                            st.info(f"📊 막대: {len(bar_metrics_manual)}개")
+                        with info_col2:
+                            st.info(f"📈 추세선: {len(line_metrics_manual)}개")
+                        
+                        if total_metrics_manual > 6:
+                            st.warning("⚠️ 지표가 많아 차트가 복잡할 수 있습니다.")
+                        elif len(bar_metrics_manual) > 3:
+                            st.warning("💡 막대 차트가 3개를 초과하면 겹칠 수 있습니다.")
+                        elif len(line_metrics_manual) > 4:
+                            st.warning("💡 추세선이 4개를 초과하면 구분하기 어려울 수 있습니다.")
                     
                     # 필터링된 데이터 생성
                     filtered_data_manual = chart_input.copy()
@@ -739,9 +827,32 @@ def render_manual_upload_tab():
                         )
                         
                         if flexible_chart_manual:
+                            # ✅ 차트 개선 옵션 적용
+                            if show_values_manual:
+                                flexible_chart_manual.update_traces(
+                                    texttemplate='%{y:.1f}',
+                                    textposition='auto'
+                                )
+                            
+                            if compact_legend_manual:
+                                flexible_chart_manual.update_layout(
+                                    legend=dict(
+                                        orientation="h",
+                                        yanchor="bottom",
+                                        y=-0.25,
+                                        xanchor="center",
+                                        x=0.5,
+                                        font=dict(size=8),
+                                        bgcolor="rgba(255,255,255,0.8)",
+                                        bordercolor="gray",
+                                        borderwidth=1
+                                    ),
+                                    margin=dict(b=120)
+                                )
+                            
                             flexible_chart_manual.update_layout(height=chart_height_manual)
                             st.plotly_chart(flexible_chart_manual, use_container_width=True, key="manual_flexible_trend")
-                            st.success(f"✅ 현재 표시 중: 회사 {len(selected_companies_manual)}개, 분기 {len(selected_quarters_manual)}개")
+                            st.success(f"✅ 현재 표시 중: 회사 {len(selected_companies_manual)}개, 분기 {len(selected_quarters_manual)}개, 총 지표 {total_metrics_manual}개")
                         else:
                             st.warning("선택된 설정으로 차트를 생성할 수 없습니다.")
                     else:
