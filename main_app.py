@@ -43,6 +43,27 @@ except ImportError:
 from util.email_util import create_email_ui
 from news_collector import create_google_news_tab, GoogleNewsCollector
 
+import re, textwrap
+
+def _render_ai_html(raw: str):
+    """AI가 준 문자열에서 코드펜스/과도한 들여쓰기를 제거하고 HTML로 렌더"""
+    if not raw:
+        return ""
+    s = raw.strip()
+
+    # 1) ``` ... ``` 코드펜스 제거 (```html, ```HTML 포함)
+    s = re.sub(r"^```(?:html|HTML)?\s*", "", s, flags=re.MULTILINE)
+    s = re.sub(r"\s*```$", "", s, flags=re.MULTILINE)
+
+    # 2) 공통 들여쓰기 제거 (줄 앞 4칸 이상 → 코드블록 인식 방지)
+    s = textwrap.dedent(s)
+
+    # 3) 선행 공백 줄 제거
+    s = "\n".join(line.lstrip() if line.lstrip().startswith("<") else line
+                  for line in s.splitlines())
+
+    return s
+
 st.set_page_config(page_title="SK Profit+: 손익 개선 전략 대시보드", page_icon="⚡", layout="wide")
 
 class SessionManager:
@@ -531,7 +552,7 @@ def render_financial_results():
     if SessionManager.is_data_available('financial_insight'):
         st.markdown("---")
         st.subheader("🤖 AI 재무 인사이트")
-        st.markdown(st.session_state.financial_insight)
+        st.markdown(_render_ai_html(st.session_state.financial_insight), unsafe_allow_html=True)
 
 def render_manual_upload_tab():
     """수동 파일 업로드 탭 렌더링"""
@@ -711,7 +732,7 @@ def render_manual_upload_tab():
         if SessionManager.is_data_available('manual_financial_insight'):
             st.markdown("---")
             st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
-            st.markdown(st.session_state.manual_financial_insight)
+            st.markdown(_render_ai_html(st.session_state.manual_financial_insight), unsafe_allow_html=True)
 
 def render_integrated_insight_tab():
     """통합 인사이트 탭 렌더링"""
@@ -759,7 +780,7 @@ def render_integrated_insight_tab():
     # 통합 인사이트 결과 표시
     if SessionManager.is_data_available('integrated_insight'):
         st.subheader("🤖 통합 인사이트 결과")
-        st.markdown(st.session_state.integrated_insight)
+        st.markdown(_render_ai_html(st.session_state.integrated_insight), unsafe_allow_html=True)
     else:
         st.info("재무 분석과 구글 뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
 
