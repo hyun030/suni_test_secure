@@ -1321,7 +1321,13 @@ def main():
     
     with tabs[2]:  # Google News 수집 탭
         create_google_news_tab()
-    
+        
+        # ✅ 여기서만 화면에 렌더한다 (news_collector.py에서는 렌더 금지)
+        if st.session_state.get("google_news_insight"):
+            st.markdown("---")
+            st.subheader("📋 AI 종합 분석 리포트")
+            render_insight_as_cards(st.session_state.google_news_insight)
+
     with tabs[3]:  # 통합 인사이트 탭
         render_integrated_insight_tab()
     
