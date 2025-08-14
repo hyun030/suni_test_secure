@@ -430,10 +430,7 @@ def render_financial_results():
             if '분기' in chart_input.columns:
                chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
 
-            # 분기별 재무지표 트렌드 (기존)
-            st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="quarterly_trend")
-            
-            # ✅ 새로운 단계별 차트 설정 UI
+            # ✅ 새로운 사용자 지정 트렌드 분석만 사용 (기존 고정 차트 제거)
             st.markdown("---")
             st.subheader("📊 사용자 지정 트렌드 분석")
             
@@ -567,9 +564,6 @@ def render_financial_results():
                     st.info("💡 막대 또는 추세선 지표를 선택하면 차트가 표시됩니다.")
             else:
                 st.warning("사용 가능한 지표가 없습니다. 분기별 데이터를 다시 확인해주세요.")
-            
-            # 기존 트렌드 분석 (영업이익률만)
-            st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="gap_trend")
         else:
             st.info("📊 분기별 차트 모듈이 없습니다.")
 
@@ -688,9 +682,7 @@ def render_manual_upload_tab():
                 if '분기' in chart_input.columns:
                    chart_input = chart_input[~chart_input['분기'].astype(str).str.contains('연간')]
 
-                st.plotly_chart(create_quarterly_trend_chart(chart_input), use_container_width=True, key="manual_quarterly_trend")
-                
-                # 수동 업로드용 개선된 차트 설정
+                # ✅ 수동 업로드용 사용자 지정 차트만 사용 (기존 고정 차트 제거)
                 st.markdown("---")
                 st.subheader("📊 사용자 지정 트렌드 분석 (수동 업로드)")
                 
@@ -815,8 +807,6 @@ def render_manual_upload_tab():
                         st.info("💡 막대 또는 추세선 지표를 선택하면 차트가 표시됩니다.")
                 else:
                     st.warning("사용 가능한 지표가 없습니다.")
-                
-                st.plotly_chart(create_gap_trend_chart(chart_input), use_container_width=True, key="manual_gap_trend")
             else:
                 st.info("📊 분기별 차트 모듈이 없습니다.")
 
