@@ -143,8 +143,37 @@ class OpenAIInsightGenerator:
         
         except Exception as e:
             error_msg = str(e)
-            if "429" in error_msg and "quota" in error_msg.lower():
-                return "⚠️ OpenAI API 할당량이 초과되었습니다.\n\n다음 중 하나를 선택해주세요:\n• 내일 다시 시도\n• 유료 API 키로 업그레이드\n• 수동으로 분석 진행"
+            st.error(f"🔍 **상세 오류 정보**: {error_msg}")
+            
+            if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+                return f"""⚠️ **OpenAI API 할당량/속도 제한 오류**
+
+**상세 오류**: {error_msg}
+
+**가능한 원인:**
+1. **분당 요청 제한**: 너무 빠른 속도로 API 호출 (분당 3-10회 제한)
+2. **일일 사용량 제한**: 일일 사용량 한도 초과
+3. **계정 상태**: 결제 정보 미등록 또는 신용카드 한도 초과
+4. **API 키 문제**: 잘못된 API 키 사용
+
+**즉시 확인사항:**
+• OpenAI 대시보드 → Usage & Billing에서 현재 사용량 확인
+• 결제 정보가 올바르게 등록되어 있는지 확인
+• 신용카드 한도나 잔액 확인
+
+**해결 방법:**
+1. **잠시 대기**: 1-2분 후 다시 시도
+2. **사용량 확인**: OpenAI 대시보드에서 현재 사용량/한도 확인
+3. **결제 정보 재확인**: Billing → Payment method에서 카드 정보 재입력"""
+            elif "401" in error_msg or "invalid" in error_msg.lower():
+                return f"""❌ **OpenAI API 키 인증 오류**
+
+**상세 오류**: {error_msg}
+
+**해결 방법:**
+1. OpenAI 대시보드에서 새로운 API 키 생성
+2. Streamlit secrets 또는 환경변수에 올바른 API 키 설정
+3. API 키가 올바르게 복사되었는지 확인"""
             else:
                 return f"AI 인사이트 생성 중 오류가 발생했습니다: {e}"
 
@@ -222,8 +251,37 @@ class OpenAIInsightGenerator:
             return response.choices[0].message.content
         except Exception as e:
             error_msg = str(e)
-            if "429" in error_msg and "quota" in error_msg.lower():
-                return "⚠️ OpenAI API 할당량이 초과되었습니다.\n\n다음 중 하나를 선택해주세요:\n• 내일 다시 시도\n• 유료 API 키로 업그레이드\n• 수동으로 분석 진행"
+            st.error(f"🔍 **상세 오류 정보**: {error_msg}")
+            
+            if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+                return f"""⚠️ **OpenAI API 할당량/속도 제한 오류**
+
+**상세 오류**: {error_msg}
+
+**가능한 원인:**
+1. **분당 요청 제한**: 너무 빠른 속도로 API 호출 (분당 3-10회 제한)
+2. **일일 사용량 제한**: 일일 사용량 한도 초과
+3. **계정 상태**: 결제 정보 미등록 또는 신용카드 한도 초과
+4. **API 키 문제**: 잘못된 API 키 사용
+
+**즉시 확인사항:**
+• OpenAI 대시보드 → Usage & Billing에서 현재 사용량 확인
+• 결제 정보가 올바르게 등록되어 있는지 확인
+• 신용카드 한도나 잔액 확인
+
+**해결 방법:**
+1. **잠시 대기**: 1-2분 후 다시 시도
+2. **사용량 확인**: OpenAI 대시보드에서 현재 사용량/한도 확인
+3. **결제 정보 재확인**: Billing → Payment method에서 카드 정보 재입력"""
+            elif "401" in error_msg or "invalid" in error_msg.lower():
+                return f"""❌ **OpenAI API 키 인증 오류**
+
+**상세 오류**: {error_msg}
+
+**해결 방법:**
+1. OpenAI 대시보드에서 새로운 API 키 생성
+2. Streamlit secrets 또는 환경변수에 올바른 API 키 설정
+3. API 키가 올바르게 복사되었는지 확인"""
             else:
                 st.error(f"AI 뉴스 인사이트 생성 중 오류가 발생했습니다: {e}")
                 return "AI 인사이트 생성에 실패했습니다."
@@ -313,7 +371,36 @@ class OpenAIInsightGenerator:
             return response.choices[0].message.content
         except Exception as e:
             error_msg = str(e)
-            if "429" in error_msg and "quota" in error_msg.lower():
-                return "⚠️ OpenAI API 할당량이 초과되었습니다.\n\n다음 중 하나를 선택해주세요:\n• 내일 다시 시도\n• 유료 API 키로 업그레이드\n• 수동으로 분석 진행"
+            st.error(f"🔍 **상세 오류 정보**: {error_msg}")
+            
+            if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+                return f"""⚠️ **OpenAI API 할당량/속도 제한 오류**
+
+**상세 오류**: {error_msg}
+
+**가능한 원인:**
+1. **분당 요청 제한**: 너무 빠른 속도로 API 호출 (분당 3-10회 제한)
+2. **일일 사용량 제한**: 일일 사용량 한도 초과
+3. **계정 상태**: 결제 정보 미등록 또는 신용카드 한도 초과
+4. **API 키 문제**: 잘못된 API 키 사용
+
+**즉시 확인사항:**
+• OpenAI 대시보드 → Usage & Billing에서 현재 사용량 확인
+• 결제 정보가 올바르게 등록되어 있는지 확인
+• 신용카드 한도나 잔액 확인
+
+**해결 방법:**
+1. **잠시 대기**: 1-2분 후 다시 시도
+2. **사용량 확인**: OpenAI 대시보드에서 현재 사용량/한도 확인
+3. **결제 정보 재확인**: Billing → Payment method에서 카드 정보 재입력"""
+            elif "401" in error_msg or "invalid" in error_msg.lower():
+                return f"""❌ **OpenAI API 키 인증 오류**
+
+**상세 오류**: {error_msg}
+
+**해결 방법:**
+1. OpenAI 대시보드에서 새로운 API 키 생성
+2. Streamlit secrets 또는 환경변수에 올바른 API 키 설정
+3. API 키가 올바르게 복사되었는지 확인"""
             else:
                 return f"통합 인사이트 생성 중 오류가 발생했습니다: {e}"
