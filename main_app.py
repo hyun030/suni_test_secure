@@ -1,4 +1,55 @@
-# -*- coding: utf-8 -*-
+if available_metrics:
+                    st.markdown("**📊 차트 설정**")
+                    
+                    # 2개 컬럼으로 나누기
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        # 지표 선택 (최대 3개)
+                        selected_metrics = st.multiselect(
+                            "📈 표시할 지표 선택 (최대 3개)",
+                            available_metrics,
+                            default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
+                            help="💡 큰 금액(매출액, EBITDA)은 막대, 작은 금액/비율은 꺾은선으로 표시됩니다",
+                            max_selections=3
+                        )
+                        
+                        # 분기 선택
+                        available_quarters = list(chart_input['분기'].unique()) if '분기' in chart_input.columns else []
+                        selected_quarters = st.multiselect(
+                            "📅 표시할 분기 선택",
+                            available_quarters,
+                            default=available_quarters,
+                            help="특정 분기만 보고 싶으면 선택하세요. 전체 선택하면 모든 분기 표시"
+                        )
+                    
+                    with col2:
+                        chart_height = st.selectbox("차트 높이", [400, 500, 600, 700], index=1)
+                        
+                        # 현재 선택된 회사들 표시
+                        if '회사' in chart_input.columns:
+                            current_companies = list(chart_input['회사'].unique())                if available_metrics:
+                    st.markdown("**📊 표시할 지표를 선택하세요**")
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        # 추천 조합 표시
+                        st.info("💡 **추천 조합**: 비슷한 유형 2-3개 선택 (예: 매출액+매출원가, 또는 영업이익률+순이익률)")
+                        
+                        selected_metrics = st.multiselect(
+                            "지표 선택 (최대 3개 권장)",
+                            available_metrics,
+                            default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
+                            help="💡 실제 데이터에 있는 지표만 표시됩니다. 너무 많이 선택하면 차트가 복잡해집니다",
+                            max_selections=4  # 최대 4개로 제한
+                        )
+                        
+                        # 선택된 지표가 너무 많으면 경고
+                        if len(selected_metrics) > 3:
+                            st.warning("⚠️ 지표가 너무 많으면 차트가 복잡해집니다. 3개 이하 권장")
+                    
+                    with col2:
+                        chart_height = st.select# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -416,21 +467,20 @@ def render_financial_results():
             st.markdown("---")
             st.subheader("📊 선택 가능한 지표별 트렌드 분석")
             
-            # 사용 가능한 지표들 확인 (모든 재무지표 포함)
-            possible_metrics = [
-                # 금액 지표 (막대그래프)
-                '매출액', '매출액(조원)',
-                '매출원가', '매출원가(조원)',
-                '매출총이익', '매출총이익(조원)',
-                '영업이익', '영업이익(조원)',
-                '당기순이익', '당기순이익(조원)',
-                '판관비', '판관비(조원)',
-                'EBITDA', 'CapEx',
-                # 비율 지표 (꺾은선)
-                '영업이익률(%)', '순이익률(%)', '매출총이익률(%)', '매출원가율(%)',
-                '판관비율(%)', 'ROE(%)', 'ROA(%)', 'ROIC(%)'
-            ]
-            available_metrics = [metric for metric in possible_metrics if metric in chart_input.columns]
+            # 실제 데이터에서 사용 가능한 지표들을 동적으로 확인
+            all_columns = list(chart_input.columns)
+            st.caption(f"🔍 **전체 컬럼**: {', '.join(all_columns)}")
+            
+            # 분기, 회사, 보고서구분 제외하고 나머지가 지표들
+            exclude_cols = ['분기', '회사', '보고서구분', '연도', '분기번호']
+            available_metrics = [col for col in all_columns if col not in exclude_cols]
+            
+            st.success(f"📊 **선택 가능한 지표 ({len(available_metrics)}개)**: {', '.join(available_metrics)}")
+            
+            # 데이터 샘플 확인
+            if not chart_input.empty:
+                st.caption("📋 **데이터 샘플 (처음 3행)**:")
+                st.dataframe(chart_input.head(3), use_container_width=True)
             
             if available_metrics:
                 st.markdown("**📊 표시할 지표를 선택하세요**")
@@ -440,8 +490,8 @@ def render_financial_results():
                     selected_metrics = st.multiselect(
                         "지표 선택",
                         available_metrics,
-                        default=['영업이익률(%)', '매출액'] if all(m in available_metrics for m in ['영업이익률(%)', '매출액']) else available_metrics[:2],
-                        help="💡 금액 지표(매출액, 영업이익 등)는 막대그래프로, 비율 지표(%)는 꺾은선으로 표시됩니다"
+                        default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
+                        help="💡 실제 데이터에 있는 지표만 표시됩니다. 금액 지표는 막대그래프, 비율(%) 지표는 꺾은선으로 표시됩니다"
                     )
                 
                 with col2:
@@ -502,7 +552,7 @@ def render_financial_results():
     if SessionManager.is_data_available('financial_insight'):
         st.markdown("---")
         st.subheader("🤖 AI 재무 인사이트")
-        st.markdown(st.session_state.financial_insight, unsafe_allow_html=True)
+        st.markdown(st.session_state.financial_insight)
 
 def render_manual_upload_tab():
     """수동 파일 업로드 탭 렌더링"""
@@ -596,21 +646,15 @@ def render_manual_upload_tab():
                 st.markdown("---")
                 st.subheader("📊 선택 가능한 지표별 트렌드 분석")
                 
-                # 사용 가능한 지표들 확인 (수동 업로드용)
-                possible_metrics = [
-                    # 금액 지표 (막대그래프)
-                    '매출액', '매출액(조원)',
-                    '매출원가', '매출원가(조원)',
-                    '매출총이익', '매출총이익(조원)',
-                    '영업이익', '영업이익(조원)',
-                    '당기순이익', '당기순이익(조원)',
-                    '판관비', '판관비(조원)',
-                    'EBITDA', 'CapEx',
-                    # 비율 지표 (꺾은선)
-                    '영업이익률(%)', '순이익률(%)', '매출총이익률(%)', '매출원가율(%)',
-                    '판관비율(%)', 'ROE(%)', 'ROA(%)', 'ROIC(%)'
-                ]
-                available_metrics = [metric for metric in possible_metrics if metric in chart_input.columns]
+                # 실제 데이터에서 사용 가능한 지표들을 동적으로 확인 (수동 업로드용)
+                all_columns = list(chart_input.columns)
+                st.caption(f"🔍 데이터에 포함된 모든 컬럼: {', '.join(all_columns)}")
+                
+                # 분기, 회사, 보고서구분 제외하고 나머지가 지표들
+                exclude_cols = ['분기', '회사', '보고서구분', '연도', '분기번호']
+                available_metrics = [col for col in all_columns if col not in exclude_cols]
+                
+                st.caption(f"📊 선택 가능한 지표: {', '.join(available_metrics)}")
                 
                 if available_metrics:
                     st.markdown("**📊 표시할 지표를 선택하세요**")
@@ -620,8 +664,8 @@ def render_manual_upload_tab():
                         selected_metrics_manual = st.multiselect(
                             "지표 선택",
                             available_metrics,
-                            default=['영업이익률(%)', '매출액'] if all(m in available_metrics for m in ['영업이익률(%)', '매출액']) else available_metrics[:2],
-                            help="💡 금액 지표(매출액, 영업이익 등)는 막대그래프로, 비율 지표(%)는 꺾은선으로 표시됩니다",
+                            default=available_metrics[:2] if len(available_metrics) >= 2 else available_metrics,
+                            help="💡 실제 데이터에 있는 지표만 표시됩니다. 금액 지표는 막대그래프, 비율(%) 지표는 꺾은선으로 표시됩니다",
                             key="manual_metrics_select"
                         )
                     
@@ -676,7 +720,7 @@ def render_manual_upload_tab():
         if SessionManager.is_data_available('manual_financial_insight'):
             st.markdown("---")
             st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
-            st.markdown(st.session_state.manual_financial_insight, unsafe_allow_html=True)
+            st.markdown(st.session_state.manual_financial_insight)
 
 def render_integrated_insight_tab():
     """통합 인사이트 탭 렌더링"""
@@ -724,7 +768,7 @@ def render_integrated_insight_tab():
     # 통합 인사이트 결과 표시
     if SessionManager.is_data_available('integrated_insight'):
         st.subheader("🤖 통합 인사이트 결과")
-        st.markdown(st.session_state.integrated_insight, unsafe_allow_html=True)
+        st.markdown(st.session_state.integrated_insight)
     else:
         st.info("재무 분석과 구글 뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
 
