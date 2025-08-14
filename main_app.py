@@ -718,8 +718,8 @@ def render_financial_results():
     if SessionManager.is_data_available('financial_insight'):
         st.markdown("---")
         st.subheader("🤖 AI 재무 인사이트")
-        st.markdown(_render_ai_html(st.session_state.financial_insight), unsafe_allow_html=True)
-
+        render_insight_as_cards(st.session_state.financial_insight)
+        
 def render_manual_upload_tab():
     """수동 파일 업로드 탭 렌더링"""
     st.subheader("📁 파일 업로드 분석")
@@ -966,7 +966,7 @@ def render_manual_upload_tab():
         if SessionManager.is_data_available('manual_financial_insight'):
             st.markdown("---")
             st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
-            st.markdown(_render_ai_html(st.session_state.manual_financial_insight), unsafe_allow_html=True)
+            render_insight_as_cards(st.session_state.manual_financial_insight)
 
 def render_integrated_insight_tab():
     """통합 인사이트 탭 렌더링"""
@@ -1014,7 +1014,7 @@ def render_integrated_insight_tab():
     # 통합 인사이트 결과 표시
     if SessionManager.is_data_available('integrated_insight'):
         st.subheader("🤖 통합 인사이트 결과")
-        st.markdown(_render_ai_html(st.session_state.integrated_insight), unsafe_allow_html=True)
+        render_insight_as_cards(st.session_state.integrated_insight)
     else:
         st.info("재무 분석과 구글 뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
 
