@@ -212,84 +212,76 @@ def create_gap_trend_chart(quarterly_df: pd.DataFrame):
     return fig
 
 def create_flexible_trend_chart(quarterly_df: pd.DataFrame, selected_metrics: list = None):
-    """사용자가 선택한 지표들로 혼합 차트 생성 (막대그래프 + 꺾은선)"""
+    """사용자가 선택한 지표들로 혼합 차트 생성 - 동적 지표 분류"""
     if not PLOTLY_AVAILABLE or quarterly_df.empty: 
         return None
     
     # 기본 지표 설정 (선택된 게 없으면)
     if not selected_metrics:
-        selected_metrics = ['영업이익률(%)']
+        selected_metrics = ['영업이익률(%)'] if '영업이익률(%)' in quarterly_df.columns else [quarterly_df.columns[0]]
     
     fig = go.Figure()
     companies = quarterly_df['회사'].unique()
     
-    # 지표별 차트 타입 분류 (실제 데이터 구조에 맞게)
-    # 큰 금액 지표만 막대그래프, 나머지는 모두 꺾은선
-    bar_metrics = [
-        '매출액', '매출액(조원)', 
-        '매출원가', '매출원가(조원)',
-        '매출총이익', '매출총이익(조원)',
-        'EBITDA', 'CapEx'  # 큰 금액만 막대로
-    ]
+    # 실제 데이터에서 지표별 차트 타입을 동적으로 결정
+    # 큰 수치 지표들 → 막대그래프 (매출액, EBITDA 등)
+    # 작은 수치 + 비율 지표들 → 꺾은선
     
-    # 나머지는 모두 꺾은선 (비율 + 작은 금액들)
-    line_metrics = [
-        '영업이익', '영업이익(조원)', '당기순이익', '당기순이익(조원)', '판관비', '판관비(조원)',
-        '영업이익률(%)', '순이익률(%)', '매출총이익률(%)', '매출원가율(%)', '판관비율(%)',
-        'ROE(%)', 'ROA(%)', 'ROIC(%)'
-    ]
+    selected_bar_metrics = []
+    selected_line_metrics = []
     
-    # 지표별 라인 스타일과 색상 매핑
-    line_styles = ['solid', 'dash', 'dot', 'dashdot', 'longdash']
-    markers = ['circle', 'square', 'diamond', 'triangle-up', 'star']
+    for metric in selected_metrics:
+        if metric in quarterly_df.columns:
+            # 지표명으로 타입 판단 (동적)
+            metric_lower = metric.lower()
+            if (('매출액' in metric and ('조원' in metric or '억원' in metric or metric.endswith('매출액'))) or 
+                ('ebitda' in metric_lower) or 
+                ('매출원가' in metric and ('조원' in metric or '억원' in metric or metric.endswith('매출원가'))) or
+                ('매출총이익' in metric and ('조원' in metric or '억원' in metric or metric.endswith('매출총이익')))):
+                selected_bar_metrics.append(metric)
+            else:
+                # 나머지는 모두 꺾은선 (판관비, 영업이익, 비율 등)
+                selected_line_metrics.append(metric)
     
-    # 선택된 지표 분류
-    selected_bar_metrics = [m for m in selected_metrics if m in bar_metrics]
-    selected_line_metrics = [m for m in selected_metrics if m in line_metrics]
-    
-    # 회사별 색상 설정
+    # 회사별 색상 설정 (기존 방식 그대로 유지)
     company_colors = {}
-    base_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
-    for i, company in enumerate(companies):
+    for company in companies:
         company_colors[company] = get_company_color(company, companies)
     
-    # 막대그래프 추가 (큰 금액 지표만)
-    bar_group_gap = 0.1  # 막대 간격 조정
-    for company_idx, company in enumerate(companies):
-        company_data = quarterly_df[quarterly_df['회사'] == company]
-        base_color = company_colors[company]
-        
-        for metric_idx, metric in enumerate(selected_bar_metrics):
-            if metric in company_data.columns:
-                # 같은 회사 내에서 지표별로 색상 조금씩 변경
-                opacity = 0.8 - (metric_idx * 0.1)
-                
+    # 막대그래프 추가 (지표별로 모든 회사를 막대로)
+    for metric in selected_bar_metrics:
+        for company_idx, company in enumerate(companies):
+            company_data = quarterly_df[quarterly_df['회사'] == company]
+            
+            if metric in company_data.columns and not company_data[metric].isna().all():
                 fig.add_trace(go.Bar(
                     x=company_data['분기'], 
                     y=company_data[metric],
                     name=f"{company} - {metric.replace('(조원)', '').replace('(억원)', '')}",
                     marker=dict(
-                        color=base_color,
-                        opacity=opacity,
+                        color=company_colors[company],
+                        opacity=0.8,
                         line=dict(width=1, color='white')
                     ),
-                    yaxis='y2' if selected_line_metrics else 'y',
+                    yaxis='y2' if selected_line_metrics else 'y',  # 라인이 있으면 오른쪽 축
                     offsetgroup=company_idx,  # 회사별 그룹핑
                     hovertemplate=f'<b>{company}</b><br>' +
                                  f'{metric}: %{{y}}<br>' +
                                  '분기: %{x}<extra></extra>'
                 ))
     
-    # 꺾은선 추가 (비율 + 작은 금액들)
-    for company in companies:
-        company_data = quarterly_df[quarterly_df['회사'] == company]
-        base_color = company_colors[company]
-        
-        for i, metric in enumerate(selected_line_metrics):
-            if metric in company_data.columns:
-                # SK 관련 회사 강조
-                line_width = 4 if 'SK' in company else 3
-                marker_size = 10 if 'SK' in company else 8
+    # 꺾은선 추가 (지표별로 모든 회사를 라인으로)
+    line_styles = ['solid', 'dash', 'dot', 'dashdot', 'longdash']
+    markers = ['circle', 'square', 'diamond', 'triangle-up', 'star', 'hexagon']
+    
+    for metric_idx, metric in enumerate(selected_line_metrics):
+        for company in companies:
+            company_data = quarterly_df[quarterly_df['회사'] == company]
+            
+            if metric in company_data.columns and not company_data[metric].isna().all():
+                # SK 관련 회사 강조 (동적)
+                line_width = 4 if 'SK' in company or 'sk' in company.lower() else 3
+                marker_size = 10 if 'SK' in company or 'sk' in company.lower() else 8
                 
                 fig.add_trace(go.Scatter(
                     x=company_data['분기'], 
@@ -297,14 +289,14 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, selected_metrics: li
                     name=f"{company} - {metric.replace('(%)', '').replace('(조원)', '').replace('(억원)', '')}",
                     mode='lines+markers',
                     line=dict(
-                        color=base_color, 
+                        color=company_colors[company], 
                         width=line_width,
-                        dash=line_styles[i % len(line_styles)]
+                        dash=line_styles[metric_idx % len(line_styles)]  # 지표별 라인 스타일
                     ),
                     marker=dict(
                         size=marker_size,
-                        color=base_color,
-                        symbol=markers[i % len(markers)],
+                        color=company_colors[company],
+                        symbol=markers[metric_idx % len(markers)],  # 지표별 마커
                         line=dict(width=2, color='white')
                     ),
                     yaxis='y',  # 모든 라인은 왼쪽 y축
@@ -313,10 +305,11 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, selected_metrics: li
                                  '분기: %{x}<extra></extra>'
                 ))
     
-    # 제목 생성 (간결하게)
-    chart_title = "📊 재무지표 트렌드"
-    if len(selected_metrics) <= 3:
-        chart_title += f": {', '.join([m.replace('(%)', '').replace('(조원)', '') for m in selected_metrics])}"
+    # 제목 생성 (동적)
+    chart_title = "📊 기업별 시계열 지표 (Bar+Line)"
+    if len(selected_metrics) <= 2:
+        clean_metrics = [m.replace('(%)', '').replace('(조원)', '').replace('(억원)', '') for m in selected_metrics]
+        chart_title += f": {', '.join(clean_metrics)}"
     
     # 레이아웃 설정
     layout_kwargs = {
@@ -334,54 +327,51 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, selected_metrics: li
         'hovermode': 'x unified',
         'showlegend': True,
         'legend': dict(
-            orientation="v",
-            yanchor="top",
-            y=1,
-            xanchor="left",
-            x=1.02,
+            orientation="h",
+            yanchor="bottom",
+            y=-0.2,
+            xanchor="center",
+            x=0.5,
             font=dict(size=9)
         ),
-        'margin': dict(r=120),
+        'margin': dict(b=100),
         'plot_bgcolor': 'rgba(248,249,250,0.8)',
         'paper_bgcolor': 'white'
     }
     
-    # Y축 설정 (단순화)
+    # Y축 설정 (동적)
     if selected_bar_metrics and selected_line_metrics:
-        # 이중 Y축: 큰 금액(오른쪽) vs 나머지(왼쪽)
+        # 막대(오른쪽) + 라인(왼쪽)
+        bar_names = [m.replace('(조원)', '').replace('(억원)', '') for m in selected_bar_metrics]
+        line_names = [m.replace('(%)', '').replace('(조원)', '').replace('(억원)', '') for m in selected_line_metrics]
+        
         layout_kwargs.update({
             'yaxis': dict(
-                title="비율(%) / 소액(조원)",
+                title=f"{', '.join(line_names)}",
                 side='left',
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
             ),
             'yaxis2': dict(
-                title="대액(조원)",
+                title=f"{', '.join(bar_names)} (조원)",
                 side='right',
                 overlaying='y',
                 showgrid=False
             )
         })
     elif selected_bar_metrics:
-        # 막대만 있는 경우
-        layout_kwargs['yaxis'] = dict(title="금액(조원)", showgrid=True)
+        # 막대만
+        layout_kwargs['yaxis'] = dict(title="금액 (조원)", showgrid=True)
     else:
-        # 라인만 있는 경우
+        # 라인만
         is_percentage = any('(%)' in m for m in selected_line_metrics)
-        unit_label = "비율(%)" if is_percentage else "금액(조원)"
+        unit_label = "비율 (%)" if is_percentage else "금액"
         layout_kwargs['yaxis'] = dict(title=unit_label, showgrid=True)
     
-    # 범례 개수가 많으면 가로 배치
-    if len(selected_metrics) * len(companies) > 8:
-        layout_kwargs['legend'].update({
-            'orientation': "h",
-            'yanchor': "bottom",
-            'y': -0.3,
-            'xanchor': "center", 
-            'x': 0.5
-        })
-        layout_kwargs['margin']['b'] = 120
+    fig.update_layout(**layout_kwargs)
+    
+    return fig(%)" if is_percentage else "금액 (조원)"
+        layout_kwargs['yaxis'] = dict(title=unit_label, showgrid=True)
     
     fig.update_layout(**layout_kwargs)
     
