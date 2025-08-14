@@ -498,7 +498,7 @@ def render_financial_results():
     final_df = st.session_state.financial_data
     
     # 탭 생성
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비 분석", "📈 변동비 분석", "💰 공헌이익 분석"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비", "📈 변동비", "💰 공헌이익"])
     
     # 표시용 컬럼만 표시 (원시값 제외)
     display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
@@ -853,7 +853,7 @@ def render_manual_upload_tab():
         final_df = st.session_state.manual_financial_data
         
         # 탭 생성 (수동 업로드용)
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비 분석", "📈 변동비 분석", "💰 공헌이익 분석"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비", "📈 변동비", "💰 공헌이익"])
         
         # 표시용 컬럼만 표시
         display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
