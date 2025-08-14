@@ -64,6 +64,64 @@ def _render_ai_html(raw: str):
 
     return s
 
+# --- 카드 스타일 (마크다운을 카드처럼 보이게) ---
+st.markdown("""
+<style>
+.md-card {background:#fff;border:1px solid #e9ecef;border-radius:12px;
+          box-shadow:0 4px 12px rgba(0,0,0,.05); padding:16px 18px; margin:14px 0;}
+.md-card h3, .md-card h4 {margin:0 0 8px 0}
+.md-card ul {margin:6px 0 0 18px; line-height:1.6}
+.section-title {font-weight:800; font-size:18px; display:flex; gap:8px; align-items:center; margin-bottom:8px}
+.section-title .emoji {font-size:20px}
+</style>
+""", unsafe_allow_html=True)
+
+# --- 마크다운 결과(📊/⚠️/📈/🎯)를 섹션별 카드로 쪼개 렌더 ---
+def render_insight_as_cards(text: str):
+    """
+    AI가 마크다운으로 낸 결과 텍스트를 섹션별 카드로 감싸 렌더.
+    섹션 키: 📊 경쟁사 비교 분석, ⚠️ 위험신호, 📈 전략방안, 🎯 우선순위
+    HTML이 섞여 있으면 그대로 HTML로 렌더(_render_ai_html)하고, 아니면 카드로 변환.
+    """
+    if not text:
+        return
+    # HTML이 이미 포함된 케이스는 그대로 렌더
+    if "<div" in text or "<ul" in text or "<h3" in text:
+        st.markdown(_render_ai_html(text), unsafe_allow_html=True)
+        return
+
+    # 섹션 기준으로 분리
+    import re
+    titles = ["📊 경쟁사 비교 분석", "⚠️ 위험신호", "📈 전략방안", "🎯 우선순위"]
+    # 타이틀을 구분자로 삼아 split, 타이틀을 보존하기 위해 lookahead 사용
+    parts = re.split(r"(?=^(?:📊 경쟁사 비교 분석|⚠️ 위험신호|📈 전략방안|🎯 우선순위)\s*$)", text, flags=re.MULTILINE)
+    found_any = False
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        # 타이틀 추출
+        found = next((t for t in titles if part.startswith(t)), None)
+        if found:
+            found_any = True
+            body = part[len(found):].lstrip()  # 타이틀 제거한 본문
+            # 카드 출력
+            st.markdown(f"""
+<div class="md-card">
+  <div class="section-title"><span class="emoji">{found.split()[0]}</span><span>{found}</span></div>
+</div>
+""", unsafe_allow_html=True)
+            st.markdown(body)  # 본문은 순수 마크다운으로
+        else:
+            # 타이틀 형식이 아니면 일반 마크다운으로
+            st.markdown(part)
+
+    # 섹션 타이틀이 하나도 없으면 통째로 카드로 감싸기(안전망)
+    if not found_any:
+        st.markdown('<div class="md-card">', unsafe_allow_html=True)
+        st.markdown(text)
+        st.markdown('</div>', unsafe_allow_html=True)
+
 st.set_page_config(page_title="SK Profit+: 손익 개선 전략 대시보드", page_icon="⚡", layout="wide")
 
 class SessionManager:
@@ -600,7 +658,7 @@ def render_financial_results():
     if SessionManager.is_data_available('financial_insight'):
         st.markdown("---")
         st.subheader("🤖 AI 재무 인사이트")
-        st.markdown(_render_ai_html(st.session_state.financial_insight), unsafe_allow_html=True)
+        render_insight_as_cards(st.session_state.financial_insight)
 
 def render_manual_upload_tab():
     """수동 파일 업로드 탭 렌더링"""
@@ -836,7 +894,7 @@ def render_manual_upload_tab():
         if SessionManager.is_data_available('manual_financial_insight'):
             st.markdown("---")
             st.subheader("🤖 AI 재무 인사이트 (수동 업로드)")
-            st.markdown(_render_ai_html(st.session_state.manual_financial_insight), unsafe_allow_html=True)
+            render_insight_as_cards(st.session_state.manual_financial_insight)
 
 def render_integrated_insight_tab():
     """통합 인사이트 탭 렌더링"""
@@ -884,7 +942,7 @@ def render_integrated_insight_tab():
     # 통합 인사이트 결과 표시
     if SessionManager.is_data_available('integrated_insight'):
         st.subheader("🤖 통합 인사이트 결과")
-        st.markdown(_render_ai_html(st.session_state.integrated_insight), unsafe_allow_html=True)
+        render_insight_as_cards(st.session_state.integrated_insight)
     else:
         st.info("재무 분석과 구글 뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
 
