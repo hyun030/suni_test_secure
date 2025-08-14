@@ -326,8 +326,7 @@ def create_google_news_tab():
         
         # AI 인사이트 표시
         if hasattr(st.session_state, 'google_news_insight') and st.session_state.google_news_insight:
-            st.markdown("---")
-            st.subheader("📋 AI 종합 분석 리포트")
+            pass  # 여기선 아무것도 안 하고 main_app.py에서 렌더링
             
 
 
