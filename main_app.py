@@ -184,11 +184,11 @@ class SessionManager:
             st.session_state[insight_type] = data
         st.session_state.last_analysis_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # 분석 상태 업데이트
-        if data_type not in st.session_state.analysis_status:
-            st.session_state.analysis_status[data_type] = {}
-        st.session_state.analysis_status[data_type]['completed'] = True
-                 st.session_state.analysis_status[data_type]['timestamp'] = st.session_state.last_analysis_time
+                 # 분석 상태 업데이트
+         if data_type not in st.session_state.analysis_status:
+             st.session_state.analysis_status[data_type] = {}
+         st.session_state.analysis_status[data_type]['completed'] = True
+         st.session_state.analysis_status[data_type]['timestamp'] = st.session_state.last_analysis_time
     
     @staticmethod
     def get_data_status(data_type: str) -> dict:
@@ -712,6 +712,8 @@ def render_manual_upload_tab():
     st.subheader("📁 파일 업로드 분석")
     st.info("💡 DART에서 다운로드한 XBRL 파일을 직접 업로드하여 분석할 수 있습니다.")
     
+    st.warning("⚠️ 주의 - 각 회사의 분기별 XBRL 파일을 업로드해 주세요")
+    
     uploaded_files = st.file_uploader(
         "XBRL 파일 선택 (여러 파일 업로드 가능)",
         type=['xml', 'xbrl', 'zip'],
@@ -1089,83 +1091,38 @@ def render_integrated_insight_tab():
         st.info("재무 분석과 구글 뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
 
 def render_report_generation_tab():
-    """보고서 생성 탭 렌더링 - PDF만"""
-    st.subheader("📄 PDF 보고서 생성 & 이메일 서비스 바로가기")
+    """보고서 생성 탭 렌더링"""
+    st.subheader("📄 이메일 서비스 바로가기")
 
-    # 2열 레이아웃: PDF 생성 + 이메일 입력
-    col1, col2 = st.columns([1, 1])
+    st.write("**📧 이메일 서비스 바로가기**")
 
-    with col1:
-        st.write("**📄 PDF 보고서 다운로드**")
+    mail_providers = {
+        "네이버": "https://mail.naver.com/",
+        "구글(Gmail)": "https://mail.google.com/",
+        "다음": "https://mail.daum.net/",
+        "네이트": "https://mail.nate.com/",
+        "야후": "https://mail.yahoo.com/",
+        "아웃룩(Outlook)": "https://outlook.live.com/",
+        "프로톤메일(ProtonMail)": "https://mail.proton.me/",
+        "조호메일(Zoho Mail)": "https://mail.zoho.com/",
+        "GMX 메일": "https://www.gmx.com/",
+        "아이클라우드(iCloud Mail)": "https://www.icloud.com/mail",
+        "메일닷컴(Mail.com)": "https://www.mail.com/",
+        "AOL 메일": "https://mail.aol.com/"
+    }
 
-        # 사용자 입력
-        report_target = st.text_input("보고 대상", value="SK이노베이션 경영진")
-        report_author = st.text_input("보고자", value="")
-        show_footer = st.checkbox(
-            "푸터 문구 표시(※ 본 보고서는 대시보드에서 자동 생성되었습니다.)", 
-            value=False
-        )
+    selected_provider = st.selectbox(
+        "메일 서비스 선택",
+        list(mail_providers.keys()),
+        key="mail_provider_select"
+    )
+    url = mail_providers[selected_provider]
 
-        # ✅ 데이터 우선순위: DART 자동 > 수동 업로드
-        financial_data_for_report = None
-        if SessionManager.is_data_available('financial_data'):
-            financial_data_for_report = st.session_state.financial_data
-        elif SessionManager.is_data_available('manual_financial_data'):
-            financial_data_for_report = st.session_state.manual_financial_data
-
-        # ✅ PDF 생성 섹션
-        if EXPORT_AVAILABLE:
-            st.markdown("---")
-            st.markdown("**🚀 한글 PDF 생성 (NanumGothic 폰트)**")
-            
-            # ✅ 버튼을 직접 만들고 클릭 처리
-            if st.button("📄 PDF 보고서 생성", type="primary", key="advanced_pdf_btn"):
-                success = handle_pdf_generation_button(
-                    button_clicked=True,
-                    financial_data=financial_data_for_report,
-                    news_data=st.session_state.get('google_news_data'),
-                    insights=collect_all_insights(),
-                    quarterly_df=st.session_state.get('quarterly_data'),
-                    chart_df=st.session_state.get('chart_df'),
-                    gap_analysis_df=st.session_state.get('gap_analysis_df'),
-                    report_target=report_target.strip() or "SK이노베이션 경영진",
-                    report_author=report_author.strip() or "AI 분석 시스템",
-                    show_footer=show_footer
-                )
-        else:
-            st.warning("⚠️ PDF 생성 기능이 비활성화되어 있습니다.")
-            st.info("💡 export.py 파일과 reportlab 패키지를 확인해주세요.")
-
-    with col2:
-        st.write("**📧 이메일 서비스 바로가기**")
-
-        mail_providers = {
-            "네이버": "https://mail.naver.com/",
-            "구글(Gmail)": "https://mail.google.com/",
-            "다음": "https://mail.daum.net/",
-            "네이트": "https://mail.nate.com/",
-            "야후": "https://mail.yahoo.com/",
-            "아웃룩(Outlook)": "https://outlook.live.com/",
-            "프로톤메일(ProtonMail)": "https://mail.proton.me/",
-            "조호메일(Zoho Mail)": "https://mail.zoho.com/",
-            "GMX 메일": "https://www.gmx.com/",
-            "아이클라우드(iCloud Mail)": "https://www.icloud.com/mail",
-            "메일닷컴(Mail.com)": "https://www.mail.com/",
-            "AOL 메일": "https://mail.aol.com/"
-        }
-
-        selected_provider = st.selectbox(
-            "메일 서비스 선택",
-            list(mail_providers.keys()),
-            key="mail_provider_select"
-        )
-        url = mail_providers[selected_provider]
-
-        st.markdown(
-            f"[{selected_provider} 메일 바로가기]({url})",
-            unsafe_allow_html=True
-        )
-        st.info("선택한 메일 서비스 링크가 새 탭에서 열립니다.")
+    st.markdown(
+        f"[{selected_provider} 메일 바로가기]({url})",
+        unsafe_allow_html=True
+    )
+    st.info("선택한 메일 서비스 링크가 새 탭에서 열립니다.")
 
 def main():
     """메인 함수"""
@@ -1178,16 +1135,8 @@ def main():
     if st.session_state.last_analysis_time:
         st.info(f"🕒 마지막 분석 시간: {st.session_state.last_analysis_time}")
     
-    # Export 모듈 상태 표시 (사이드바로 이동)
+    # 데이터 상태 요약 (사이드바)
     with st.sidebar:
-        st.header("📊 시스템 상태")
-        if EXPORT_AVAILABLE:
-            st.success("✅ PDF 보고서 생성 가능")
-        else:
-            st.warning("⚠️ PDF 생성 불가")
-            st.caption("export.py 및 reportlab 확인 필요")
-            
-        # 데이터 상태 요약
         st.header("📋 데이터 현황")
         data_summary = {
             "재무 데이터": SessionManager.is_data_available('financial_data'),
@@ -1208,7 +1157,7 @@ def main():
         "📁 재무 분석(파일 업로드)", 
         "🔍 뉴스 분석", 
         "🧠 통합 인사이트", 
-        "📄 보고서 생성"
+        "📧 이메일 서비스"
     ])
     
     # 각 탭 렌더링
