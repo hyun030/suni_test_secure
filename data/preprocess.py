@@ -542,6 +542,23 @@ class SKFinancialDataProcessor:
             # 영업외수익/비용
             'nonoperatingincome': '영업외수익', '기타수익': '영업외수익', '영업외수익': '영업외수익',
             'nonoperatingexpense': '영업외비용', '기타비용': '영업외비용', '영업외비용': '영업외비용',
+            
+            # 고정비 관련 항목들
+            'depreciation': '감가상각비', 'depreciationandamortization': '감가상각비',
+            '감가상각비': '감가상각비', '감가상각비및무형자산상각비': '감가상각비',
+            'personnelcosts': '인건비', 'personnelcost': '인건비', 'employeebenefits': '인건비',
+            '인건비': '인건비', '급여': '인건비', '임금': '인건비', '복리후생비': '인건비',
+            'rentexpense': '임차료', 'rent': '임차료', '임차료': '임차료', '관리비': '관리비',
+            
+            # 변동비 관련 항목들
+            'salescommission': '판매수수료', 'commission': '판매수수료', '판매수수료': '판매수수료',
+            'shippingcost': '운반배송비', 'deliverycost': '운반배송비', '운반배송비': '운반배송비',
+            'packagingcost': '포장비', '포장비': '포장비',
+            'outsourcingcost': '외주가공비', '외주가공비': '외주가공비',
+            'promotionalcost': '판촉비', 'samplecost': '샘플비', '판촉비': '판촉비', '샘플비': '샘플비',
+            'consumables': '소모품비', '소모품비': '소모품비',
+            'powercost': '동력비', '동력비': '동력비', '전력비': '동력비',
+            'rawmaterialcost': '원재료비', '원재료비': '원재료비',
         }
 
     def process_dart_data(self, dart_df: pd.DataFrame, company_name: str) -> pd.DataFrame | None:
@@ -610,12 +627,60 @@ class SKFinancialDataProcessor:
         return re.sub(r'[^a-z0-9가-힣]', '', (name or '').lower())
 
     def _build_statement(self, data: dict, company: str) -> pd.DataFrame:
-        """손익계산서 생성"""
-        order = ['매출액','매출원가','매출총이익','판매비와관리비','영업이익','영업외수익','영업외비용','당기순이익']
+        """손익계산서 생성 (고정비, 변동비, 공헌이익 포함)"""
+        # 기본 손익계산서 순서
+        basic_order = ['매출액','매출원가','매출총이익']
         rows = []
-        for k in order:
+        
+        # 기본 항목들 추가
+        for k in basic_order:
             if k in data:
                 rows.append({'구분': k, company: self._fmt_amt(data[k]), f'{company}_원시값': data[k]})
+        
+        # 고정비 계산 및 추가
+        fixed_costs = 0
+        fixed_cost_items = ['감가상각비', '인건비', '임차료', '관리비']
+        fixed_cost_data = {}
+        
+        for item in fixed_cost_items:
+            if item in data:
+                fixed_costs += data[item]
+                fixed_cost_data[item] = data[item]
+        
+        if fixed_cost_data:
+            rows.append({'구분': '고정비', company: self._fmt_amt(fixed_costs), f'{company}_원시값': fixed_costs})
+            # 고정비 세부 항목들 추가
+            for item, amount in fixed_cost_data.items():
+                rows.append({'구분': f'  └ {item}', company: self._fmt_amt(amount), f'{company}_원시값': amount})
+        
+        # 변동비 계산 및 추가
+        variable_costs = 0
+        variable_cost_items = ['판매수수료', '운반배송비', '포장비', '외주가공비', '판촉비', '샘플비', '소모품비', '동력비', '원재료비']
+        variable_cost_data = {}
+        
+        for item in variable_cost_items:
+            if item in data:
+                variable_costs += data[item]
+                variable_cost_data[item] = data[item]
+        
+        if variable_cost_data:
+            rows.append({'구분': '변동비', company: self._fmt_amt(variable_costs), f'{company}_원시값': variable_costs})
+            # 변동비 세부 항목들 추가
+            for item, amount in variable_cost_data.items():
+                rows.append({'구분': f'  └ {item}', company: self._fmt_amt(amount), f'{company}_원시값': amount})
+        
+        # 공헌이익 계산 및 추가
+        if '매출액' in data and '매출원가' in data:
+            contribution_margin = data['매출액'] - data['매출원가'] - variable_costs
+            rows.append({'구분': '공헌이익', company: self._fmt_amt(contribution_margin), f'{company}_원시값': contribution_margin})
+        
+        # 나머지 기본 항목들 추가
+        remaining_order = ['판매비와관리비','영업이익','영업외수익','영업외비용','당기순이익']
+        for k in remaining_order:
+            if k in data:
+                rows.append({'구분': k, company: self._fmt_amt(data[k]), f'{company}_원시값': data[k]})
+        
+        # 비율 계산
         sales = data.get('매출액', 0)
         if sales:
             def r(name, num): rows.append({'구분': name, company: f"{(num/sales)*100:.2f}%", f'{company}_원시값': (num/sales)*100})
@@ -624,6 +689,12 @@ class SKFinancialDataProcessor:
             if '당기순이익' in data: r('순이익률(%)', data['당기순이익'])
             if '매출원가' in data: r('매출원가율(%)', data['매출원가'])
             if '판매비와관리비' in data: r('판관비율(%)', data['판매비와관리비'])
+            if fixed_costs > 0: r('고정비율(%)', fixed_costs)
+            if variable_costs > 0: r('변동비율(%)', variable_costs)
+            if '매출액' in data and '매출원가' in data and variable_costs > 0:
+                contribution_margin = data['매출액'] - data['매출원가'] - variable_costs
+                r('공헌이익률(%)', contribution_margin)
+        
         return pd.DataFrame(rows)
 
     def _fmt_amt(self, v: float) -> str:
