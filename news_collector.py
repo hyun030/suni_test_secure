@@ -328,5 +328,9 @@ def create_google_news_tab():
         if hasattr(st.session_state, 'google_news_insight') and st.session_state.google_news_insight:
             st.markdown("---")
             st.subheader("📋 AI 종합 분석 리포트")
-            st.markdown(st.session_state.google_news_insight, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="md-card">
+            {st.session_state.google_news_insight}
+            </div>
+            """, unsafe_allow_html=True)
 
