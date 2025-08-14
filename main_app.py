@@ -515,7 +515,7 @@ def render_financial_results():
         )
     
     with tab2:
-        st.markdown("**💵 고정비**")
+        s st.markdown("**💵 고정비**")
         # 고정비 관련 항목들만 필터링 (계산된 고정비 포함, 감가상각비 제외)
         fixed_items = ['고정비', '인건비', '임차료', '관리비', '고정비율(%)']
         fixed_df = final_df[final_df['구분'].isin(fixed_items) | 
@@ -873,8 +873,8 @@ def render_manual_upload_tab():
                 }
             )
         
-        with tab2:
-             st.markdown("**💵 고정비**")
+                with tab2:
+            st.markdown("**💵 고정비**")
             # 고정비 관련 항목들만 필터링 (계산된 고정비 포함, 감가상각비 제외)
             fixed_items = ['고정비', '인건비', '임차료', '관리비', '고정비율(%)']
             fixed_df = final_df[final_df['구분'].isin(fixed_items) | 
