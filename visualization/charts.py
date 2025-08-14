@@ -199,7 +199,7 @@ def create_gap_trend_chart(quarterly_df: pd.DataFrame):
     )
     return fig
 
-def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = None, line_metrics: list = None):
+def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = None, line_metrics: list = None, show_values: bool = False):
     """사용자가 선택한 막대/추세선 지표들로 혼합 차트 생성"""
     if not PLOTLY_AVAILABLE or quarterly_df.empty: 
         return None
@@ -232,6 +232,16 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = 
             company_data = quarterly_df[quarterly_df['회사'] == company]
             
             if metric in company_data.columns and not company_data[metric].isna().all():
+                # ✅ 막대 차트용 수치 표시 설정
+                text_values = None
+                texttemplate = None
+                textposition = None
+                
+                if show_values:
+                    text_values = company_data[metric]
+                    texttemplate = '%{text:.1f}'
+                    textposition = 'auto'
+                
                 fig.add_trace(go.Bar(
                     x=company_data['분기'], 
                     y=company_data[metric],
@@ -243,6 +253,9 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = 
                     ),
                     yaxis='y2' if valid_line_metrics else 'y',  # 추세선이 있으면 오른쪽 축 사용
                     offsetgroup=company_idx,
+                    text=text_values,
+                    texttemplate=texttemplate,
+                    textposition=textposition,
                     hovertemplate=f'<b>{company}</b><br>{metric}: %{{y}}<br>분기: %{{x}}<extra></extra>'
                 ))
     
@@ -259,11 +272,23 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = 
                 line_width = 4 if 'SK' in company or 'sk' in company.lower() else 3
                 marker_size = 10 if 'SK' in company or 'sk' in company.lower() else 8
                 
+                # ✅ 추세선용 수치 표시 설정
+                text_values = None
+                texttemplate = None
+                textposition = None
+                mode = 'lines+markers'
+                
+                if show_values:
+                    text_values = company_data[metric]
+                    texttemplate = '%{text:.1f}'
+                    textposition = 'top center'
+                    mode = 'lines+markers+text'
+                
                 fig.add_trace(go.Scatter(
                     x=company_data['분기'], 
                     y=company_data[metric],
                     name=f"{company} - {metric.replace('(%)', '').replace('(조원)', '').replace('(억원)', '')}",
-                    mode='lines+markers',
+                    mode=mode,
                     line=dict(
                         color=company_colors[company], 
                         width=line_width,
@@ -275,6 +300,9 @@ def create_flexible_trend_chart(quarterly_df: pd.DataFrame, bar_metrics: list = 
                         symbol=markers[metric_idx % len(markers)],
                         line=dict(width=2, color='white')
                     ),
+                    text=text_values,
+                    texttemplate=texttemplate,
+                    textposition=textposition,
                     yaxis='y',  # 추세선은 항상 왼쪽 축 사용
                     hovertemplate=f'<b>{company}</b><br>{metric}: %{{y}}<br>분기: %{{x}}<extra></extra>'
                 ))
