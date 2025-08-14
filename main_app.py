@@ -498,7 +498,7 @@ def render_financial_results():
     final_df = st.session_state.financial_data
     
     # 탭 생성
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비 분석", "📈 변동비 분석", "💰 공헌이익 분석"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비", "📈 변동비", "💰 공헌이익"])
     
     # 표시용 컬럼만 표시 (원시값 제외)
     display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
@@ -517,8 +517,8 @@ def render_financial_results():
         )
     
     with tab2:
-        st.markdown("**🏢 고정비 분석**")
-        # 고정비 관련 항목들만 필터링 (인건비만 표시)
+        st.markdown("**💵 고정비**")
+        # 고정비 관련 항목들만 필터링 (인건비만 표시, 감가상각비는 계산에만 포함)
         fixed_items = ['인건비']
         fixed_df = final_df[final_df['구분'].isin(fixed_items)]
         if not fixed_df.empty:
@@ -529,11 +529,12 @@ def render_financial_results():
                     "구분": st.column_config.TextColumn("구분", width="medium")
                 }
             )
+            st.info("💡 **참고**: 고정비 총액에는 감가상각비가 포함되어 있습니다. (감가상각비는 별도로 계산됨)")
         else:
             st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
     
     with tab3:
-        st.markdown("**📈 변동비 분석**")
+        st.markdown("**💸 변동비**")
         # 변동비 관련 항목들만 필터링 (매출원가만 표시)
         variable_items = ['매출원가']
         variable_df = final_df[final_df['구분'].isin(variable_items)]
@@ -549,7 +550,7 @@ def render_financial_results():
             st.info("💡 매출원가 데이터가 수집되지 않았습니다. DART API에서 매출원가 데이터를 확인해보세요.")
     
     with tab4:
-        st.markdown("**💰 공헌이익 분석**")
+        st.markdown("**💰 공헌이익**")
         # 공헌이익 관련 항목들만 필터링
         contribution_items = ['매출액', '매출원가', '변동비', '공헌이익', '고정비', '영업이익']
         contribution_df = final_df[final_df['구분'].isin(contribution_items)]
@@ -852,7 +853,7 @@ def render_manual_upload_tab():
         final_df = st.session_state.manual_financial_data
         
         # 탭 생성 (수동 업로드용)
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비 분석", "📈 변동비 분석", "💰 공헌이익 분석"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비", "📈 변동비", "💰 공헌이익"])
         
         # 표시용 컬럼만 표시
         display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
@@ -871,8 +872,8 @@ def render_manual_upload_tab():
             )
         
         with tab2:
-            st.markdown("**🏢 고정비 분석**")
-            # 고정비 관련 항목들만 필터링 (인건비만 표시)
+            st.markdown("**💵 고정비**")
+            # 고정비 관련 항목들만 필터링 (인건비만 표시, 감가상각비는 계산에만 포함)
             fixed_items = ['인건비']
             fixed_df = final_df[final_df['구분'].isin(fixed_items)]
             if not fixed_df.empty:
@@ -883,11 +884,12 @@ def render_manual_upload_tab():
                         "구분": st.column_config.TextColumn("구분", width="medium")
                     }
                 )
+                st.info("💡 **참고**: 고정비 총액에는 감가상각비가 포함되어 있습니다. (감가상각비는 별도로 계산됨)")
             else:
                 st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
         
         with tab3:
-            st.markdown("**📈 변동비 분석**")
+            st.markdown("**💸 변동비**")
             # 변동비 관련 항목들만 필터링 (매출원가만 표시)
             variable_items = ['매출원가']
             variable_df = final_df[final_df['구분'].isin(variable_items)]
@@ -903,7 +905,7 @@ def render_manual_upload_tab():
                 st.info("💡 매출원가 데이터가 수집되지 않았습니다. DART API에서 매출원가 데이터를 확인해보세요.")
         
         with tab4:
-            st.markdown("**💰 공헌이익 분석**")
+            st.markdown("**💰 공헌이익**")
             # 공헌이익 관련 항목들만 필터링
             contribution_items = ['매출액', '매출원가', '변동비', '공헌이익', '고정비', '영업이익']
             contribution_df = final_df[final_df['구분'].isin(contribution_items)]
