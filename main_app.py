@@ -528,24 +528,17 @@ def render_financial_results():
                 
                 # 차트 생성 및 표시
                 if (bar_metrics or line_metrics) and not filtered_data.empty:
-                    # ✅ 새로운 차트 함수 호출 (옵션 추가)
+                    # ✅ 새로운 차트 함수 호출 (show_values 파라미터 추가)
                     flexible_chart = create_flexible_trend_chart(
                         filtered_data, 
                         bar_metrics=bar_metrics, 
-                        line_metrics=line_metrics
+                        line_metrics=line_metrics,
+                        show_values=show_values  # ✅ 수치 표시 옵션 전달
                     )
                     
                     if flexible_chart:
-                        # ✅ 차트 개선 옵션 적용
-                        if show_values:
-                            # 수치 표시 옵션
-                            flexible_chart.update_traces(
-                                texttemplate='%{y:.1f}',
-                                textposition='auto'
-                            )
-                        
+                        # ✅ 범례 압축 옵션만 적용 (수치 표시는 차트 함수에서 처리)
                         if compact_legend:
-                            # 범례 압축 옵션
                             flexible_chart.update_layout(
                                 legend=dict(
                                     orientation="h",
@@ -791,17 +784,12 @@ def render_manual_upload_tab():
                         flexible_chart_manual = create_flexible_trend_chart(
                             filtered_data_manual, 
                             bar_metrics=bar_metrics_manual, 
-                            line_metrics=line_metrics_manual
+                            line_metrics=line_metrics_manual,
+                            show_values=show_values_manual  # ✅ 수치 표시 옵션 전달
                         )
                         
                         if flexible_chart_manual:
-                            # ✅ 차트 개선 옵션 적용
-                            if show_values_manual:
-                                flexible_chart_manual.update_traces(
-                                    texttemplate='%{y:.1f}',
-                                    textposition='auto'
-                                )
-                            
+                            # ✅ 범례 압축 옵션만 적용
                             if compact_legend_manual:
                                 flexible_chart_manual.update_layout(
                                     legend=dict(
