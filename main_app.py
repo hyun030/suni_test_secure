@@ -13,32 +13,7 @@ from visualization.charts import (
     create_gap_analysis, create_gap_chart, PLOTLY_AVAILABLE
 )
 
-# ✅ export 모듈 import 수정 - PDF만 언급
-try:
-    # 현재 디렉토리에 export.py가 있는 경우
-    from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
-    EXPORT_AVAILABLE = True
-    st.success("✅ PDF 생성 모듈 로드 성공")
-except ImportError:
-    try:
-        # util 폴더에 있는 경우
-        from util.export import generate_pdf_report, create_excel_report, handle_pdf_generation_button
-        EXPORT_AVAILABLE = True
-        st.success("✅ PDF 생성 모듈 로드 성공 (util 경로)")
-    except ImportError as e:
-        # import 실패 시 대체 함수들 생성
-        def create_excel_report(*args, **kwargs):
-            return b"Excel report generation is not available."
-        
-        def generate_pdf_report(*args, **kwargs):
-            return {'success': False, 'error': 'PDF generation not available'}
-        
-        def handle_pdf_generation_button(*args, **kwargs):
-            st.error("❌ PDF 생성 기능을 사용할 수 없습니다.")
-            return False
-            
-        EXPORT_AVAILABLE = False
-        st.error(f"❌ PDF 생성 모듈 로드 실패: {e}")
+
 
 from util.email_util import create_email_ui
 from news_collector import create_google_news_tab, GoogleNewsCollector
@@ -183,9 +158,7 @@ class SessionManager:
             'financial_data', 'quarterly_data',
             'financial_insight', 'integrated_insight',
             'selected_companies', 'manual_financial_data',
-            'google_news_data', 'google_news_insight',
-            # ✅ PDF 생성을 위한 추가 변수들
-            'chart_df', 'gap_analysis_df', 'insights_list'
+                         'google_news_data', 'google_news_insight'
         ]
         
         # 각 변수 초기화
@@ -215,17 +188,7 @@ class SessionManager:
         if data_type not in st.session_state.analysis_status:
             st.session_state.analysis_status[data_type] = {}
         st.session_state.analysis_status[data_type]['completed'] = True
-        st.session_state.analysis_status[data_type]['timestamp'] = st.session_state.last_analysis_time
-        
-        # ✅ PDF 생성을 위한 데이터 전처리 추가
-        if data_type == 'financial_data' and data is not None:
-            # chart_df 생성 (PDF 차트용)
-            st.session_state.chart_df = prepare_chart_data(data)
-            
-            # gap_analysis_df 생성 (PDF 갭분석용) 
-            raw_cols = resolve_raw_cols_for_gap(data)
-            if len(raw_cols) >= 2:
-                st.session_state.gap_analysis_df = create_gap_analysis(data, raw_cols)
+                 st.session_state.analysis_status[data_type]['timestamp'] = st.session_state.last_analysis_time
     
     @staticmethod
     def get_data_status(data_type: str) -> dict:
@@ -240,46 +203,7 @@ class SessionManager:
         data = st.session_state.get(data_type)
         return data is not None and (not hasattr(data, 'empty') or not data.empty)
 
-# ✅ PDF 생성을 위한 데이터 전처리 함수 추가
-def prepare_chart_data(financial_data):
-    """재무 데이터를 차트용 형태로 변환"""
-    if financial_data is None or financial_data.empty:
-        return None
-    
-    try:
-        # financial_data를 chart_df 형태로 변환
-        chart_rows = []
-        
-        # 회사 컬럼 찾기 (구분, _원시값 제외)
-        company_cols = [col for col in financial_data.columns 
-                       if col != '구분' and not col.endswith('_원시값')]
-        
-        for _, row in financial_data.iterrows():
-            metric = row['구분']
-            for company in company_cols:
-                value = row[company]
-                if pd.notna(value):
-                    # 숫자 추출 (%, 조원 등 제거)
-                    try:
-                        if isinstance(value, str):
-                            clean_value = value.replace('%', '').replace('조원', '').replace(',', '')
-                            numeric_value = float(clean_value)
-                        else:
-                            numeric_value = float(value)
-                        
-                        chart_rows.append({
-                            '구분': metric,
-                            '회사': company, 
-                            '수치': numeric_value
-                        })
-                    except:
-                        continue
-        
-        return pd.DataFrame(chart_rows) if chart_rows else None
-        
-    except Exception as e:
-        st.warning(f"차트 데이터 준비 중 오류: {e}")
-        return None
+
 
 def sort_quarterly_by_quarter(df: pd.DataFrame) -> pd.DataFrame:
     """분기별 데이터 정렬"""
@@ -320,24 +244,7 @@ def resolve_raw_cols_for_gap(df: pd.DataFrame) -> list:
     cols = [c for c in df.columns if c != '구분' and not c.endswith('_원시값')]
     return cols
 
-# ✅ 인사이트 수집 함수 추가
-def collect_all_insights():
-    """모든 인사이트를 리스트로 수집"""
-    insights = []
-    
-    if SessionManager.is_data_available('financial_insight'):
-        insights.append(st.session_state.financial_insight)
-    
-    if SessionManager.is_data_available('manual_financial_insight'):
-        insights.append(st.session_state.manual_financial_insight)
-        
-    if SessionManager.is_data_available('google_news_insight'):
-        insights.append(st.session_state.google_news_insight)
-        
-    if SessionManager.is_data_available('integrated_insight'):
-        insights.append(st.session_state.integrated_insight)
-    
-    return insights
+
 
 def render_financial_analysis_tab():
     """재무분석 탭 렌더링"""
@@ -462,10 +369,10 @@ def render_financial_analysis_tab():
                     else:
                         st.warning("⚠️ 수집된 분기별 데이터가 없습니다.")
 
-                if dataframes:
-                    # 데이터 저장 (✅ PDF용 데이터도 함께 준비)
-                    financial_data = processor.merge_company_data(dataframes)
-                    SessionManager.save_data('financial_data', financial_data)
+                                 if dataframes:
+                     # 데이터 저장
+                     financial_data = processor.merge_company_data(dataframes)
+                     SessionManager.save_data('financial_data', financial_data)
                     
                     if q_data_list:
                         quarterly_data = pd.concat(q_data_list, ignore_index=True)
@@ -498,7 +405,7 @@ def render_financial_results():
     final_df = st.session_state.financial_data
     
     # 탭 생성
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비", "📈 변동비", "💰 공헌이익"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비 분석", "📈 변동비 분석", "💰 공헌이익 분석"])
     
     # 표시용 컬럼만 표시 (원시값 제외)
     display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
@@ -516,25 +423,25 @@ def render_financial_results():
             }
         )
     
-    with tab2:
-        st.markdown("**💵 고정비**")
-        # 고정비 관련 항목들만 필터링 (인건비만 표시, 감가상각비는 계산에만 포함)
-        fixed_items = ['인건비']
-        fixed_df = final_df[final_df['구분'].isin(fixed_items)]
-        if not fixed_df.empty:
-            st.dataframe(
-                fixed_df[display_cols].set_index('구분'), 
-                use_container_width=True,
-                column_config={
-                    "구분": st.column_config.TextColumn("구분", width="medium")
-                }
-            )
-            st.info("💡 **참고**: 고정비 총액에는 감가상각비가 포함되어 있습니다. (감가상각비는 별도로 계산됨)")
-        else:
-            st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
+        with tab2:
+            st.markdown("**🏢 고정비**")
+            # 고정비 관련 항목들만 필터링 (인건비만 표시)
+            fixed_items = ['인건비']
+            fixed_df = final_df[final_df['구분'].isin(fixed_items)]
+            if not fixed_df.empty:
+                st.dataframe(
+                    fixed_df[display_cols].set_index('구분'), 
+                    use_container_width=True,
+                    column_config={
+                        "구분": st.column_config.TextColumn("구분", width="medium")
+                    }
+                )
+                st.info("💡 **참고**: 고정비 총액에는 감가상각비가 포함되어 있습니다. (감가상각비는 별도로 계산됨)")
+            else:
+                st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
     
     with tab3:
-        st.markdown("**💸 변동비**")
+        st.markdown("**📈 변동비**")
         # 변동비 관련 항목들만 필터링 (매출원가만 표시)
         variable_items = ['매출원가']
         variable_df = final_df[final_df['구분'].isin(variable_items)]
@@ -853,7 +760,7 @@ def render_manual_upload_tab():
         final_df = st.session_state.manual_financial_data
         
         # 탭 생성 (수동 업로드용)
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비", "📈 변동비", "💰 공헌이익"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 기본 손익계산서", "🏢 고정비 분석", "📈 변동비 분석", "💰 공헌이익 분석"])
         
         # 표시용 컬럼만 표시
         display_cols = [col for col in final_df.columns if not col.endswith('_원시값')]
@@ -872,8 +779,8 @@ def render_manual_upload_tab():
             )
         
         with tab2:
-            st.markdown("**💵 고정비**")
-            # 고정비 관련 항목들만 필터링 (인건비만 표시, 감가상각비는 계산에만 포함)
+            st.markdown("**🏢 고정비**")
+            # 고정비 관련 항목들만 필터링 (인건비만 표시)
             fixed_items = ['인건비']
             fixed_df = final_df[final_df['구분'].isin(fixed_items)]
             if not fixed_df.empty:
@@ -886,10 +793,10 @@ def render_manual_upload_tab():
                 )
                 st.info("💡 **참고**: 고정비 총액에는 감가상각비가 포함되어 있습니다. (감가상각비는 별도로 계산됨)")
             else:
-                st.info("💡 인건비 데이터가 수집되지 않았습니다. DART API에서 인건비 데이터를 확인해보세요.")
+                st.info("💡 고정비 데이터가 수집되지 않았습니다. DART API에서 고정비 데이터를 확인해보세요.")
         
         with tab3:
-            st.markdown("**💸 변동비**")
+            st.markdown("**📈 변동비**")
             # 변동비 관련 항목들만 필터링 (매출원가만 표시)
             variable_items = ['매출원가']
             variable_df = final_df[final_df['구분'].isin(variable_items)]
@@ -1139,11 +1046,7 @@ def render_integrated_insight_tab():
     """통합 인사이트 탭 렌더링"""
     st.subheader("🧠 통합 인사이트 생성")
     
-    # 분석 상태 표시
-    if SessionManager.is_data_available('integrated_insight'):
-        status = SessionManager.get_data_status('integrated_insight')
-        if status.get('completed'):
-            st.success(f"✅ 통합 인사이트 완료 ({status.get('timestamp', '시간 정보 없음')})")
+    # 분석 상태 표시 (제거 - 중복 방지)
     
     if st.button("🚀 통합 인사이트 생성", type="primary"):
         # 사용 가능한 인사이트들 수집
