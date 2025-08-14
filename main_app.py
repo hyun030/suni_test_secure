@@ -831,7 +831,7 @@ def render_manual_upload_tab():
                     if dataframes:
                         manual_data = processor.merge_company_data(dataframes)
                         SessionManager.save_data('manual_financial_data', manual_data)
-                        SessionManager.save_data('financial_data', manual_data)
+                        # 수동 업로드 데이터는 financial_data에 저장하지 않음 (탭 혼동 방지)
 
                         # AI 인사이트 생성 (DART 자동 수집과 동일한 프롬프트 사용)
                         with st.spinner("🤖 AI 인사이트 생성 중..."):
