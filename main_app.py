@@ -109,38 +109,6 @@ def render_insight_as_cards(text: str):
     if not text:
         return
 
-    # === 🔧 NEW: 렌더 직전 중복 제거 패치 (번호 헤딩 재시작/이모지 섹션 재시작 감지) ===
-    import re
-    s = text.strip()
-
-    # A) '1.' / '1)' / '## 1.' 같은 번호 헤딩이 "다시" 시작되면 그 지점부터 잘라냄
-    first_one_seen = False
-    for m in re.finditer(r'(?m)^(?:#{0,6}\s*)?(\d+)\s*[.)]\s+', s):
-        if m.group(1) == '1':
-            if not first_one_seen:
-                first_one_seen = True
-            else:
-                s = s[:m.start()].strip()
-                break
-
-    # B) 이모지 섹션(📊 경쟁사 비교 분석)이 두 번째 등장하면 그 이전까지만 유지
-    if "📊 경쟁사 비교 분석" in s:
-        i1 = s.find("📊 경쟁사 비교 분석")
-        i2 = s.find("📊 경쟁사 비교 분석", i1 + 1)
-        if i2 != -1:
-            s = s[:i2].strip()
-
-    # C) 혹시 첫 절이 그대로 두 번 붙은 순수 중복(헤딩 없이)일 때 마지막 안전장치
-    #    (앞/뒤 45~55% 범위에서 동일 접두사 반복을 찾음)
-    if len(s) > 400:
-        probe = s[: int(len(s) * 0.5)]
-        j = s.find(probe, len(probe) - 50)  # 유사 위치부터 재등장 탐지
-        if j != -1:
-            s = s[:j].strip()
-
-    text = s
-    # === 🔧 NEW 패치 끝 ===
-    
     # 1) HTML 포함 시 원문 그대로
     if "<div" in text or "<ul" in text or "<h3" in text or "<aside" in text:
         st.markdown(_render_ai_html(text), unsafe_allow_html=True)
