@@ -6,6 +6,13 @@ from datetime import datetime, timedelta
 import json
 from typing import List, Dict, Optional
 
+# 통합 인사이트에서 쓰는 렌더러 재사용 (있으면 쓰고, 없으면 무시)
+try:
+    from __main__ import render_insight_as_cards, _keep_first_block
+except Exception:
+    render_insight_as_cards = None
+    _keep_first_block = None
+    
 class GoogleNewsCollector:
     """Google News API를 활용한 정유 관련 뉴스 수집기"""
     
@@ -328,7 +335,24 @@ def create_google_news_tab():
         if hasattr(st.session_state, 'google_news_insight') and st.session_state.google_news_insight:
             st.markdown("---")
             st.subheader("📋 AI 종합 분석 리포트")
-            st.markdown(st.session_state.google_news_insight)
+            
+            insight = st.session_state.google_news_insight
+
+            # 번호 소제목을 H2 형태로 승격 (예: "1. ..." → "## 1. ...")
+            import re
+            normalized = re.sub(r'(?m)^(?:\s*)(\d+)\.\s+', r'## \1. ', insight)
+
+            # 통합 탭과 동일한 중복 방지 적용(있으면)
+            if _keep_first_block:
+                normalized = _keep_first_block(normalized)
+
+            # 카드 렌더러가 있으면 그대로 사용, 없으면 일반 마크다운
+            if render_insight_as_cards:
+                render_insight_as_cards(normalized)
+            else:
+                st.markdown(normalized)
+
+
 
             
 
