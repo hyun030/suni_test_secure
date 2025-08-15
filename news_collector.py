@@ -338,15 +338,36 @@ def create_google_news_tab():
             
             insight = st.session_state.google_news_insight
 
-            # 번호 소제목을 H2 형태로 승격 (예: "1. ..." → "## 1. ...")
             import re
-            normalized = re.sub(r'(?m)^(?:\s*)(\d+)\.\s+', r'## \1. ', insight)
 
-            # 통합 탭과 동일한 중복 방지 적용(있으면)
+            # 1) HTML 헤딩/리스트 태그를 평문으로 변환(카드 렌더 분기 회피)
+            sanitized = insight
+            # 헤딩 태그 제거(내용만 남김)
+            sanitized = re.sub(r'</?h[1-6][^>]*>', '', sanitized)
+            # div/aside 제거
+            sanitized = re.sub(r'</?(?:div|aside)[^>]*>', '', sanitized)
+            # 리스트 태그를 마크다운 기호로 치환
+            sanitized = re.sub(r'<ul[^>]*>', '', sanitized)
+            sanitized = re.sub(r'</ul>', '', sanitized)
+            sanitized = re.sub(r'<li[^>]*>\s*', '- ', sanitized)
+            sanitized = re.sub(r'</li>', '', sanitized)
+            # 기타 공백 엔티티
+            sanitized = sanitized.replace('&nbsp;', ' ')
+
+            # 2) 번호 소제목을 H2로 승격 → 카드 분해 규칙에 맞춤
+            normalized = re.sub(r'(?m)^\s*(\d+)\.\s+', r'## \1. ', sanitized)
+
+            # 3) (있으면) 중복 방지 필터 적용
+            try:
+                from __main__ import _keep_first_block, render_insight_as_cards
+            except Exception:
+                _keep_first_block = None
+                render_insight_as_cards = None
+
             if _keep_first_block:
                 normalized = _keep_first_block(normalized)
 
-            # 카드 렌더러가 있으면 그대로 사용, 없으면 일반 마크다운
+            # 4) 카드 렌더러 사용(없으면 일반 마크다운)
             if render_insight_as_cards:
                 render_insight_as_cards(normalized)
             else:
