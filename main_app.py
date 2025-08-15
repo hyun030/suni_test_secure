@@ -62,6 +62,29 @@ def _render_ai_html(raw: str):
 
     return s
 
+def _keep_first_block(text: str) -> str:
+    """통합 리포트가 두 번 붙어 온 경우, 첫 번째 블록만 남긴다."""
+    if not text:
+        return text
+
+    s = text.strip()
+
+    # 1) '## 1.' 형태(H2 헤딩) 기준 중복 차단
+    h2_marker = "## 1."
+    i1 = s.find(h2_marker)
+    if i1 != -1:
+        i2 = s.find(h2_marker, i1 + len(h2_marker))
+        return s[:i2].strip() if i2 != -1 else s
+
+    # 2) 한국어 제목 기준 중복 차단
+    kr_marker = "1. 종합 현황 진단"
+    j1 = s.find(kr_marker)
+    if j1 != -1:
+        j2 = s.find(kr_marker, j1 + len(kr_marker))
+        return s[:j2].strip() if j2 != -1 else s
+
+    return s
+    
 # --- 카드 스타일 (마크다운을 카드처럼 보이게) ---
 st.markdown("""
 <style>
@@ -1181,7 +1204,7 @@ def render_integrated_insight_tab():
     # 통합 인사이트 결과 표시
     if SessionManager.is_data_available('integrated_insight'):
         st.subheader("🤖 통합 인사이트 결과")
-        render_insight_as_cards(st.session_state.integrated_insight)
+        render_insight_as_cards(_keep_first_block(st.session_state.integrated_insight))
     else:
         st.info("재무 분석과 구글 뉴스 분석을 완료한 후 통합 인사이트를 생성할 수 있습니다.")
 
