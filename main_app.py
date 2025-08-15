@@ -74,14 +74,37 @@ def _keep_first_block(text: str) -> str:
     i1 = s.find(h2_marker)
     if i1 != -1:
         i2 = s.find(h2_marker, i1 + len(h2_marker))
-        return s[:i2].strip() if i2 != -1 else s
+        if i2 != -1:
+            return s[:i2].strip()
 
     # 2) 한국어 제목 기준 중복 차단
     kr_marker = "1. 종합 현황 진단"
     j1 = s.find(kr_marker)
     if j1 != -1:
         j2 = s.find(kr_marker, j1 + len(kr_marker))
-        return s[:j2].strip() if j2 != -1 else s
+        if j2 != -1:
+            return s[:j2].strip()
+
+    # 3) "SK에너지는 원가 절감과 AI 기술 도입을 통해" 문구 기준 중복 차단
+    summary_marker = "SK에너지는 원가 절감과 AI 기술 도입을 통해"
+    k1 = s.find(summary_marker)
+    if k1 != -1:
+        k2 = s.find(summary_marker, k1 + len(summary_marker))
+        if k2 != -1:
+            return s[:k2].strip()
+
+    # 4) 전체 텍스트가 너무 길면 (8000자 이상) 중복 가능성 체크
+    if len(s) > 8000:
+        # 중간 지점에서 동일한 패턴이 있는지 확인
+        mid_point = len(s) // 2
+        first_half = s[:mid_point]
+        second_half = s[mid_point:]
+        
+        # 첫 번째 절반에서 마지막 500자를 기준으로 중복 확인
+        if len(first_half) > 500:
+            last_500 = first_half[-500:]
+            if last_500 in second_half:
+                return first_half.strip()
 
     return s
     
@@ -1186,12 +1209,23 @@ def render_integrated_insight_tab():
                 try:
                     openai = OpenAIInsightGenerator(config.OPENAI_API_KEY)
                     
-                    # 모든 인사이트를 하나의 텍스트로 결합
-                    combined_insights = "\n\n".join([f"=== {title} ===\n{insight}" for title, insight in available_insights])
+                    # 재무 인사이트와 뉴스 인사이트 분리
+                    financial_insights = []
+                    news_insights = []
+                    
+                    for title, insight in available_insights:
+                        if "재무" in title:
+                            financial_insights.append(insight)
+                        elif "뉴스" in title:
+                            news_insights.append(insight)
+                    
+                    # 재무 인사이트와 뉴스 인사이트를 각각 결합
+                    combined_financial = "\n\n".join(financial_insights) if financial_insights else "재무 인사이트 없음"
+                    combined_news = "\n\n".join(news_insights) if news_insights else "뉴스 인사이트 없음"
                     
                     integrated_insight = openai.generate_integrated_insight(
-                        combined_insights,
-                        None
+                        combined_financial,
+                        combined_news
                     )
                     SessionManager.save_data('integrated_insight', integrated_insight, 'integrated_insight')
                     st.success("✅ 통합 인사이트가 생성되었습니다!")
